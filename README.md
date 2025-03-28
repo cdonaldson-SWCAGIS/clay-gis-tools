@@ -1,4 +1,4 @@
-# SWCA GIS Tools
+# Clay GIS Tools
 
 A collection of Python utilities and a web application designed to automate and streamline GIS workflows for SWCA Environmental Consultants. These tools interact with ArcGIS Online/Portal to perform operations that would otherwise require manual intervention through the web interface.
 
@@ -249,10 +249,3 @@ Contributions to SWCA GIS Tools are welcome! Please follow these steps:
 - Write unit tests for new functionality
 - Update documentation to reflect changes
 
-## License
-
-[Specify license information here]
-
-## Contact
-
-[Specify contact information here]
