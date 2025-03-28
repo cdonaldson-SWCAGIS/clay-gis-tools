@@ -1,0 +1,33 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+
+    <!-- Background (optional if you'd like a transparent icon) -->
+    <rect width="64" height="64" fill="none" />
+
+    <!--
+    1. We define a linear gradient for a subtle clay color variation.
+    2. Feel free to change gradient stops or the ID reference in fill attributes.
+  -->
+    <defs>
+        <linearGradient id="clayGradient" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#D59166" />
+            <stop offset="100%" stop-color="#AF6D45" />
+        </linearGradient>
+    </defs>
+
+    <!-- Main top surface of the brick -->
+    <path d="M12 26 L40 26 L52 18 L24 18 Z" fill="url(#clayGradient)" stroke="#A5572B" stroke-width="1"
+        stroke-linejoin="round" />
+
+    <!-- Front face of the brick -->
+    <path d="M12 26 L12 38 L40 38 L40 26 Z" fill="url(#clayGradient)" stroke="#8B4720" stroke-width="1"
+        stroke-linejoin="round" />
+
+    <!-- Right side of the brick -->
+    <path d="M40 26 L52 18 L52 30 L40 38 Z" fill="url(#clayGradient)" stroke="#8B4720" stroke-width="1"
+        stroke-linejoin="round" />
+
+    <!-- Optional small highlights or lines to suggest edges -->
+    <path d="M12 26 L24 18
+       M40 26 L52 18
+       M40 38 L52 30" fill="none" stroke="#ffffff" stroke-opacity="0.2" stroke-width="1" stroke-linecap="round" />
+</svg>
