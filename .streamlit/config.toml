@@ -1,0 +1,44 @@
+# Streamlit Configuration File
+# VSCode-esque Theme Configuration
+
+[theme]
+# Primary accent color for interactive elements
+primaryColor = "#007ACC"  # VSCode blue
+
+# Background color for the main content area
+backgroundColor = "#1E1E1E"  # VSCode dark background
+
+# Background color for sidebar and most interactive widgets
+secondaryBackgroundColor = "#252526"  # VSCode sidebar color
+
+# Color used for almost all text
+textColor = "#D4D4D4"  # VSCode text color
+
+
+[server]
+# Enable static file serving
+enableStaticServing = true
+
+# Enable CORS for all origins
+enableCORS = true
+
+# Run on all network interfaces
+headless = true
+
+[browser]
+# Server address
+serverAddress = "localhost"
+
+# Server port
+serverPort = 8501
+
+# Don't automatically open browser on start
+gatherUsageStats = false
+
+[runner]
+# Streamlit module to run
+# main = "app"
+
+[client]
+# Controls whether uncaught app exceptions are displayed in the browser.
+showErrorDetails = true

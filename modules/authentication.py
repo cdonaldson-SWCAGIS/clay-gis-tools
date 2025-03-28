@@ -21,7 +21,8 @@ def show():
     # Authentication method selection
     auth_method = st.radio(
         "Authentication Method",
-        ["Environment Variables", "Manual Entry"]
+        ["Environment Variables", "Manual Entry"],
+        index=1  # Set default to "Manual Entry"
     )
     
     # Get credentials based on selected method
@@ -49,7 +50,7 @@ def show():
         # Manual credential entry
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
-        profile = st.text_input("Profile (optional)")
+        #profile = st.text_input("Profile (optional)")
     
     # Connection button
     col1, col2 = st.columns([1, 3])
@@ -64,7 +65,7 @@ def show():
             with st.spinner("Connecting to ArcGIS Online/Portal..."):
                 try:
                     # Attempt to connect to ArcGIS Online/Portal
-                    gis = GIS(username=username, password=password, profile=profile)
+                    gis = GIS(username=username, password=password)
                     
                     # Store connection in session state
                     st.session_state.gis = gis
