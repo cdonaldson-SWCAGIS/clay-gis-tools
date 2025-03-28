@@ -50,4 +50,5 @@ ENV/
 *.project
 *.settings/
 *.factorypath
+.clinerules
 /memory-bank
