@@ -139,11 +139,26 @@ class WebMapAnalyzer:
                 "type": webmap_item.type
             }
             
-            # Load web map
-            webmap = Map(webmap_item)
+            # Load web map JSON directly to avoid Pydantic validation issues
+            try:
+                webmap_json = webmap_item.get_data()
+                logger.info("Successfully loaded web map JSON")
+            except Exception as e:
+                logger.error(f"Error loading web map data: {str(e)}")
+                # Try using Map class as fallback
+                try:
+                    webmap = Map(webmap_item)
+                    # Convert to JSON-like structure
+                    webmap_json = {
+                        'operationalLayers': getattr(webmap, 'layers', []),
+                        'tables': getattr(webmap, 'tables', [])
+                    }
+                except Exception as e2:
+                    logger.error(f"Fallback Map loading also failed: {str(e2)}")
+                    raise
             
-            # Analyze layers and tables
-            self._analyze_layers(webmap)
+            # Analyze layers and tables from JSON
+            self._analyze_layers_from_json(webmap_json)
             
             # Generate recommendations
             self._generate_recommendations()
@@ -158,6 +173,176 @@ class WebMapAnalyzer:
             self.analysis_results["error"] = str(e)
             
         return self.analysis_results
+    
+    def _analyze_layers_from_json(self, webmap_json: Dict[str, Any]):
+        """Analyze all layers and tables from web map JSON."""
+        # Process operational layers
+        operational_layers = webmap_json.get('operationalLayers', [])
+        for layer_json in operational_layers:
+            self._process_layer_json(layer_json, "layer")
+        
+        # Process tables
+        tables = webmap_json.get('tables', [])
+        for table_json in tables:
+            self._process_layer_json(table_json, "table")
+        
+        # Check total layer count
+        total_items = self.analysis_results["summary"]["total_layers"] + \
+                      self.analysis_results["summary"]["total_tables"]
+        
+        if total_items > 15:
+            self.analysis_results["layer_optimization"]["layer_count_analysis"] = {
+                "count": total_items,
+                "threshold": 15,
+                "recommendation": f"Web map has {total_items} layers/tables. Consider consolidating similar data or removing unnecessary layers for better field performance.",
+                "severity": "warning" if total_items <= 25 else "critical"
+            }
+    
+    def _process_layer_json(self, layer_json: Dict[str, Any], item_type: str = "layer"):
+        """Process a layer from JSON, handling GroupLayers recursively."""
+        layer_type = layer_json.get('layerType', '')
+        
+        # Handle GroupLayer
+        if layer_type == 'GroupLayer':
+            # Process nested layers
+            nested_layers = layer_json.get('layers', [])
+            for nested_layer in nested_layers:
+                self._process_layer_json(nested_layer, item_type)
+        else:
+            # Process as regular layer
+            self._analyze_single_layer_json(layer_json, item_type)
+            if item_type == "layer":
+                self.analysis_results["summary"]["total_layers"] += 1
+            else:
+                self.analysis_results["summary"]["total_tables"] += 1
+    
+    def _analyze_single_layer_json(self, layer_json: Dict[str, Any], layer_type: str = "layer"):
+        """Analyze a single layer from JSON data."""
+        try:
+            layer_info = {
+                "title": layer_json.get('title', 'Unnamed'),
+                "type": layer_type,
+                "url": layer_json.get('url'),
+                "id": layer_json.get('id'),
+                "layerType": layer_json.get('layerType', 'Unknown')
+            }
+            
+            if not layer_info["url"]:
+                return
+            
+            # Create feature layer object for detailed analysis
+            feature_layer = FeatureLayer(layer_info["url"], gis=self.gis)
+            
+            # Run all checks
+            self._check_record_count(feature_layer, layer_info)
+            self._check_layer_age(feature_layer, layer_info)
+            self._check_reserved_keywords(feature_layer, layer_info)
+            self._check_field_aliases(feature_layer, layer_info)
+            self._check_drawing_optimization(feature_layer, layer_info)
+            self._check_query_capabilities(feature_layer, layer_info)
+            self._check_editable_status_json(feature_layer, layer_info, layer_json)
+            self._check_visibility_ranges_json(layer_json, layer_info)
+            self._check_popup_configuration_json(layer_json, layer_info)
+            
+        except Exception as e:
+            logger.error(f"Error analyzing layer {layer_info.get('title', 'Unknown')}: {str(e)}")
+    
+    def _check_visibility_ranges_json(self, layer_json: Dict[str, Any], layer_info: Dict):
+        """Check visibility ranges from JSON data."""
+        try:
+            min_scale = layer_json.get('minScale', 0)
+            max_scale = layer_json.get('maxScale', 0)
+            
+            # Check if no scale limits are set (both are 0)
+            if min_scale == 0 and max_scale == 0:
+                self.analysis_results["performance_checks"]["visibility_ranges"].append({
+                    "layer": layer_info["title"],
+                    "min_scale": "No limit",
+                    "max_scale": "No limit",
+                    "recommendation": "Consider setting scale limits to improve performance at different zoom levels",
+                    "severity": "info"
+                })
+            
+            # Check for overly broad ranges
+            elif min_scale > 0 and max_scale > 0:
+                scale_range = min_scale / max_scale if max_scale > 0 else 0
+                if scale_range > 1000:  # Very broad range
+                    self.analysis_results["performance_checks"]["visibility_ranges"].append({
+                        "layer": layer_info["title"],
+                        "min_scale": min_scale,
+                        "max_scale": max_scale,
+                        "range_ratio": scale_range,
+                        "recommendation": "Very broad visibility range may impact performance",
+                        "severity": "warning"
+                    })
+                    
+        except Exception as e:
+            logger.debug(f"Could not check visibility ranges for {layer_info['title']}: {str(e)}")
+    
+    def _check_popup_configuration_json(self, layer_json: Dict[str, Any], layer_info: Dict):
+        """Check popup configuration from JSON data."""
+        try:
+            popup_info = layer_json.get('popupInfo')
+            
+            if not popup_info:
+                self.analysis_results["configuration_analysis"]["popup_config"].append({
+                    "layer": layer_info["title"],
+                    "configured": False,
+                    "recommendation": "No popup configured - users won't see attribute information",
+                    "severity": "warning"
+                })
+            else:
+                # Check popup configuration quality
+                issues = []
+                
+                # Check if title is configured
+                if not popup_info.get('title'):
+                    issues.append("No popup title configured")
+                
+                # Check if fields are configured
+                field_infos = popup_info.get('fieldInfos', [])
+                if not field_infos:
+                    issues.append("No fields configured in popup")
+                else:
+                    # Check for too many fields
+                    visible_fields = [f for f in field_infos if f.get('visible', True)]
+                    if len(visible_fields) > 15:
+                        issues.append(f"Too many fields ({len(visible_fields)}) in popup may overwhelm users")
+                
+                if issues:
+                    self.analysis_results["configuration_analysis"]["popup_config"].append({
+                        "layer": layer_info["title"],
+                        "configured": True,
+                        "issues": issues,
+                        "recommendation": "Optimize popup configuration for better user experience",
+                        "severity": "info"
+                    })
+                    
+        except Exception as e:
+            logger.debug(f"Could not check popup configuration for {layer_info['title']}: {str(e)}")
+    
+    def _check_editable_status_json(self, feature_layer: FeatureLayer, layer_info: Dict, layer_json: Dict[str, Any]):
+        """Check if layers intended for data collection are editable."""
+        try:
+            capabilities = feature_layer.properties.capabilities if hasattr(feature_layer.properties, 'capabilities') else ""
+            is_editable = 'Editing' in capabilities or 'Create' in capabilities or 'Update' in capabilities
+            
+            # Check if layer name suggests it should be editable
+            editable_keywords = ['collection', 'survey', 'inspection', 'edit', 'input', 'form', 'entry']
+            layer_name_lower = layer_info["title"].lower()
+            
+            suggests_editable = any(keyword in layer_name_lower for keyword in editable_keywords)
+            
+            if suggests_editable and not is_editable:
+                self.analysis_results["configuration_analysis"]["editable_layers"].append({
+                    "layer": layer_info["title"],
+                    "editable": False,
+                    "recommendation": "Layer name suggests data collection but editing is disabled",
+                    "severity": "warning"
+                })
+                
+        except Exception as e:
+            logger.debug(f"Could not check editable status for {layer_info['title']}: {str(e)}")
     
     def _analyze_layers(self, webmap: Map):
         """Analyze all layers and tables in the web map."""

@@ -17,6 +17,10 @@ WORKDIR /app
 # Copy requirements file first (for better Docker caching)
 COPY requirements.txt .
 
+# Install arcgis-mapping via conda from the esri channel
+# This must be done before pip installs to ensure proper dependencies
+RUN conda install -y -c esri arcgis-mapping
+
 # Install additional Python packages for your application
 # The base image already includes arcgis, but we'll upgrade/reinstall to ensure compatibility
 RUN pip install --no-cache-dir --upgrade -r requirements.txt
