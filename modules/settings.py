@@ -97,7 +97,7 @@ def show_general_settings():
         st.session_state.debug_mode = True
         logging.getLogger().setLevel(logging.INFO)
         st.success("General settings reset to defaults")
-        st.experimental_rerun()
+        st.rerun()
 
 def show_authentication_settings():
     """Display authentication settings"""
@@ -148,7 +148,7 @@ def show_authentication_settings():
             st.session_state.gis = None
             st.session_state.username = None
             st.success("Logged out successfully")
-            st.experimental_rerun()
+            st.rerun()
 
 def show_advanced_settings():
     """Display advanced settings"""
@@ -207,7 +207,7 @@ def show_advanced_settings():
         st.session_state.request_timeout = 60
         st.session_state.max_items = 25
         st.success("Advanced settings reset to defaults")
-        st.experimental_rerun()
+        st.rerun()
 
 def show_help():
     """Display help information for the Settings page"""

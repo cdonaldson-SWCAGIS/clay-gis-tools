@@ -28,7 +28,7 @@ if os.path.exists(css_path):
 os.makedirs("modules", exist_ok=True)
 
 # Import modules (will be created in subsequent steps)
-from modules import authentication, webmap_filters, webmap_forms, settings
+from modules import authentication, webmap_filters, webmap_forms, webmap_analysis, settings
 
 # Sidebar navigation
 st.sidebar.title("Clay AGOL Tools")
@@ -58,7 +58,7 @@ if not st.session_state.authenticated:
 # Navigation
 page = st.sidebar.radio(
     "Navigation",
-    ["Authentication", "Web Map Filters", "Web Map Forms", "Settings"],
+    ["Authentication", "Web Map Filters", "Web Map Forms", "Web Map Analysis", "Settings"],
     key="navigation"
 )
 
@@ -69,6 +69,8 @@ elif page == "Web Map Filters":
     webmap_filters.show()
 elif page == "Web Map Forms":
     webmap_forms.show()
+elif page == "Web Map Analysis":
+    webmap_analysis.show()
 elif page == "Settings":
     settings.show()
 

@@ -13,19 +13,7 @@ def get_gis_object(username: str, password: str, profile: Optional[str] = None) 
     Raises an exception if authentication fails.
     """
     try:
-        if profile:
-            gis = GIS(profile=profile)
-            # If using profile, username/password might not be needed or are part of the profile
-            # However, if profile fails, we can try with username/password
-            if not gis.logged_in:
-                logger.warning(f"Profile '{profile}' failed to authenticate. Attempting with username/password.")
-                gis = GIS(username=username, password=password)
-        else:
-            gis = GIS(username=username, password=password)
-        
-        if not gis.logged_in:
-            raise Exception("Failed to log in with provided credentials.")
-        
+        gis = GIS(username=username, password=password)
         logger.info(f"Successfully connected as {gis.properties.user.username}")
         return gis
     except Exception as e:
@@ -140,7 +128,7 @@ def show():
             st.session_state.authenticated = False
             st.session_state.gis = None
             st.session_state.username = None
-            st.experimental_rerun()
+            st.rerun()
     
     with st.expander("Need Help?"):
         st.markdown("""
