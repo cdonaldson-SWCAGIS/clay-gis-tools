@@ -18,8 +18,8 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Install additional Python packages for your application
-# The base image already includes arcgis, so we only need to install the extras
-RUN pip install --no-cache-dir streamlit>=1.30.0 rich>=13.0.0 requests>=2.31.0
+# The base image already includes arcgis, but we'll upgrade/reinstall to ensure compatibility
+RUN pip install --no-cache-dir --upgrade -r requirements.txt
 
 # Copy the rest of the application files
 COPY . .
