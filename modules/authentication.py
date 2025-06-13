@@ -2,15 +2,55 @@ import streamlit as st
 from arcgis.gis import GIS
 import os
 import logging
+from typing import Optional
 
 # Configure logging
 logger = logging.getLogger("authentication")
 
+def get_gis_object(username: str, password: str, profile: Optional[str] = None) -> GIS:
+    """
+    Attempts to create and return a GIS object.
+    Raises an exception if authentication fails.
+    """
+    try:
+        if profile:
+            gis = GIS(profile=profile)
+            # If using profile, username/password might not be needed or are part of the profile
+            # However, if profile fails, we can try with username/password
+            if not gis.logged_in:
+                logger.warning(f"Profile '{profile}' failed to authenticate. Attempting with username/password.")
+                gis = GIS(username=username, password=password)
+        else:
+            gis = GIS(username=username, password=password)
+        
+        if not gis.logged_in:
+            raise Exception("Failed to log in with provided credentials.")
+        
+        logger.info(f"Successfully connected as {gis.properties.user.username}")
+        return gis
+    except Exception as e:
+        logger.error(f"Failed to connect to ArcGIS Online/Portal: {str(e)}")
+        raise
+
+def authenticate_from_env() -> GIS:
+    """
+    Authenticates with ArcGIS Online/Portal using environment variables.
+    Raises an exception if required environment variables are missing or authentication fails.
+    """
+    username = os.environ.get("ARCGIS_USERNAME")
+    password = os.environ.get("ARCGIS_PASSWORD")
+    profile = os.environ.get("ARCGIS_PROFILE")
+
+    if not username or not password:
+        raise ValueError("ARCGIS_USERNAME and ARCGIS_PASSWORD environment variables must be set for headless authentication.")
+
+    st.session_state.username = username # Store username for display if needed
+    return get_gis_object(username, password, profile)
+
 def show():
-    """Display the authentication interface"""
+    """Display the authentication interface for Streamlit."""
     st.title("Authentication")
     
-    # Display information about authentication
     st.markdown("""
     ## ArcGIS Online/Portal Authentication
     
@@ -18,64 +58,62 @@ def show():
     You can use environment variables or enter your credentials directly.
     """)
     
-    # Authentication method selection
     auth_method = st.radio(
         "Authentication Method",
         ["Environment Variables", "Manual Entry"],
         index=1  # Set default to "Manual Entry"
     )
     
-    # Get credentials based on selected method
+    username_input = ""
+    password_input = ""
+    profile_input = ""
+
     if auth_method == "Environment Variables":
-        username = os.environ.get("ARCGIS_USERNAME", "")
-        password = os.environ.get("ARCGIS_PASSWORD", "")
-        profile = os.environ.get("ARCGIS_PROFILE", "")
+        username_input = os.environ.get("ARCGIS_USERNAME", "")
+        password_input = os.environ.get("ARCGIS_PASSWORD", "")
+        profile_input = os.environ.get("ARCGIS_PROFILE", "")
         
         st.info("Using credentials from environment variables")
         
-        # Show environment variable status
         env_status = {
-            "ARCGIS_USERNAME": "✅ Set" if username else "❌ Not set",
-            "ARCGIS_PASSWORD": "✅ Set" if password else "❌ Not set",
-            "ARCGIS_PROFILE": "✅ Set" if profile else "❌ Not set (optional)"
+            "ARCGIS_USERNAME": "✅ Set" if username_input else "❌ Not set",
+            "ARCGIS_PASSWORD": "✅ Set" if password_input else "❌ Not set",
+            "ARCGIS_PROFILE": "✅ Set" if profile_input else "❌ Not set (optional)"
         }
         
         st.write("Environment Variable Status:")
         for var, status in env_status.items():
             st.write(f"- {var}: {status}")
             
-        if not username or not password:
+        if not username_input or not password_input:
             st.warning("Required environment variables not set. Please set ARCGIS_USERNAME and ARCGIS_PASSWORD, or use Manual Entry.")
     else:
-        # Manual credential entry
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        #profile = st.text_input("Profile (optional)")
+        username_input = st.text_input("Username", value=st.session_state.get("username_manual", ""))
+        password_input = st.text_input("Password", type="password", value=st.session_state.get("password_manual", ""))
+        profile_input = st.text_input("Profile (optional)", value=st.session_state.get("profile_manual", ""))
+        
+        st.session_state.username_manual = username_input
+        st.session_state.password_manual = password_input
+        st.session_state.profile_manual = profile_input
     
-    # Connection button
     col1, col2 = st.columns([1, 3])
     with col1:
         connect_button = st.button("Connect", type="primary", use_container_width=True)
     
-    # Handle connection attempt
     if connect_button:
-        if not username or not password:
+        if not username_input or not password_input:
             st.error("Username and password are required")
         else:
             with st.spinner("Connecting to ArcGIS Online/Portal..."):
                 try:
-                    # Attempt to connect to ArcGIS Online/Portal
-                    gis = GIS(username=username, password=password)
+                    gis = get_gis_object(username_input, password_input, profile_input)
                     
-                    # Store connection in session state
                     st.session_state.gis = gis
                     st.session_state.authenticated = True
-                    st.session_state.username = username
+                    st.session_state.username = gis.properties.user.username
                     
-                    # Display success message
                     st.success(f"Connected as {gis.properties.user.username}")
                     
-                    # Show user information
                     st.subheader("User Information")
                     user_info = {
                         "Username": gis.properties.user.username,
@@ -87,29 +125,23 @@ def show():
                     for key, value in user_info.items():
                         st.write(f"**{key}:** {value}")
                     
-                    # Log successful authentication
-                    logger.info(f"User {username} authenticated successfully")
+                    logger.info(f"User {gis.properties.user.username} authenticated successfully via UI")
                     
-                    # Prompt to navigate to tools
                     st.info("You can now use the navigation sidebar to access the tools.")
                     
                 except Exception as e:
-                    # Handle authentication failure
                     st.error(f"Authentication failed: {str(e)}")
-                    logger.error(f"Authentication failed for user {username}: {str(e)}")
+                    logger.error(f"Authentication failed for user {username_input}: {str(e)}")
     
-    # Show authenticated status if already logged in
     if st.session_state.authenticated and not connect_button:
         st.success(f"Already connected as {st.session_state.username}")
         
-        # Logout button
         if st.button("Logout"):
             st.session_state.authenticated = False
             st.session_state.gis = None
             st.session_state.username = None
             st.experimental_rerun()
     
-    # Help information
     with st.expander("Need Help?"):
         st.markdown("""
         ### Authentication Help

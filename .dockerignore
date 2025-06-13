@@ -1,0 +1,15 @@
+.git
+.gitignore
+.vscode/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.streamlit/
+.venv/
+venv/
+env/
+*.log
+*.sqlite3
+memory-bank/

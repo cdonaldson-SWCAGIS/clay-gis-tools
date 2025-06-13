@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  clay-gis-tools:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: clay-gis-tools
+    ports:
+      - "8501:8501"
+    volumes:
+      # Mount the current directory for development
+      # Remove this in production for security
+      - ./modules:/app/modules:ro
+      - ./src:/app/src:ro
+      - ./static:/app/static:ro
+    environment:
+      # Add any environment variables here
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    # Uncomment below if you need to pass credentials via environment
+    # env_file:
+    #   - .env

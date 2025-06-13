@@ -33,6 +33,9 @@ ENV/
 *.egg-info/
 .eggs/
 
+# Environment variables
+.env
+
 # Miscellaneous
 *.swp
 *.bak

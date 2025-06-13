@@ -21,8 +21,46 @@ A collection of Python utilities and a web application designed to automate and 
 
 - Python 3.x
 - ArcGIS Online/Portal account with appropriate permissions
+- Docker (optional, for containerized deployment)
 
-### Setup
+### Setup Options
+
+#### Option 1: Docker Installation (Recommended)
+
+1. Clone this repository:
+   ```
+   git clone https://github.com/swca/swca-gis-tools.git
+   cd swca-gis-tools
+   ```
+
+2. Build and run with Docker Compose:
+   ```
+   docker-compose up --build
+   ```
+
+3. Access the application at http://localhost:8501
+
+#### Option 2: Docker Installation (Manual)
+
+1. Clone this repository:
+   ```
+   git clone https://github.com/swca/swca-gis-tools.git
+   cd swca-gis-tools
+   ```
+
+2. Build the Docker image:
+   ```
+   docker build -t clay-gis-tools .
+   ```
+
+3. Run the container:
+   ```
+   docker run -p 8501:8501 clay-gis-tools
+   ```
+
+4. Access the application at http://localhost:8501
+
+#### Option 3: Local Installation
 
 1. Clone this repository:
    ```
@@ -247,4 +285,3 @@ Contributions to SWCA GIS Tools are welcome! Please follow these steps:
 - Add docstrings for all functions and classes
 - Write unit tests for new functionality
 - Update documentation to reflect changes
-

@@ -40,7 +40,20 @@ if "authenticated" not in st.session_state:
 if "gis" not in st.session_state:
     st.session_state.gis = None
 if "debug_mode" not in st.session_state:
-    st.session_state.debug_mode = True
+    # Read DEBUG_MODE from environment variable, default to True
+    st.session_state.debug_mode = os.environ.get("DEBUG_MODE", "True").lower() == "true"
+
+# Attempt authentication from environment variables if not already authenticated
+if not st.session_state.authenticated:
+    try:
+        gis_from_env = authentication.authenticate_from_env()
+        st.session_state.gis = gis_from_env
+        st.session_state.authenticated = True
+        st.session_state.username = gis_from_env.properties.user.username
+        st.success(f"Automatically connected as {gis_from_env.properties.user.username} via environment variables.")
+    except (ValueError, Exception) as e:
+        st.warning(f"Automatic authentication failed: {e}. Please use the 'Authentication' page to connect manually.")
+        st.session_state.authenticated = False # Ensure it's false if auto-auth fails
 
 # Navigation
 page = st.sidebar.radio(
@@ -51,7 +64,7 @@ page = st.sidebar.radio(
 
 # Page routing
 if page == "Authentication" or not st.session_state.authenticated:
-    authentication.show()
+    authentication.show() # Show authentication page if not authenticated or explicitly selected
 elif page == "Web Map Filters":
     webmap_filters.show()
 elif page == "Web Map Forms":
@@ -62,4 +75,3 @@ elif page == "Settings":
 # Footer
 st.sidebar.markdown("---")
 st.sidebar.caption("Clay AGOL Tools v1.0.0")
-
