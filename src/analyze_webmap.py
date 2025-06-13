@@ -11,7 +11,7 @@ from collections import defaultdict
 
 from arcgis.gis import GIS
 from arcgis.features import FeatureLayer
-from arcgis.map import Map
+from arcgis.mapping import Map
 
 # Configure logging
 logging.basicConfig(
