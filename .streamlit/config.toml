@@ -1,18 +1,18 @@
 # Streamlit Configuration File
-# VSCode-esque Theme Configuration
+# GitHub Light Theme Configuration
 
 [theme]
 # Primary accent color for interactive elements
-primaryColor = "#007ACC"  # VSCode blue
+primaryColor = "#0969da"  # GitHub blue
 
 # Background color for the main content area
-backgroundColor = "#1E1E1E"  # VSCode dark background
+backgroundColor = "#ffffff"  # Pure white
 
 # Background color for sidebar and most interactive widgets
-secondaryBackgroundColor = "#252526"  # VSCode sidebar color
+secondaryBackgroundColor = "#f6f8fa"  # GitHub light grey
 
 # Color used for almost all text
-textColor = "#D4D4D4"  # VSCode text color
+textColor = "#24292f"  # GitHub dark text
 
 
 [server]

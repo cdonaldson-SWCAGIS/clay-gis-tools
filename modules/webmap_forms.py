@@ -4,6 +4,15 @@ import sys
 import os
 from typing import List, Optional, Dict, Any
 
+# Import utility modules
+from modules.item_utils import ItemSelector, get_webmap_item
+from modules.common_operations import (
+    ensure_authentication, get_gis_object, show_debug_mode_control,
+    show_operation_parameters, validate_operation_inputs, show_validation_errors,
+    execute_operation_with_status, show_operation_results, show_batch_operation_interface,
+    create_help_section, show_tool_header
+)
+
 # Configure logging
 logger = logging.getLogger("webmap_forms")
 
@@ -16,342 +25,392 @@ except ImportError:
 
 def show():
     """Display the Web Map Forms interface"""
-    st.title("Web Map Forms")
-    
-    # Check authentication
-    if not st.session_state.authenticated:
-        st.warning("Please authenticate first")
-        st.info("Use the navigation sidebar to go to the Authentication page")
+    # Check authentication first
+    if not ensure_authentication():
         return
     
-    # Display information about the tool
-    st.markdown("""
-    ## Web Map Forms Utility
-    
-    This tool allows you to update form configurations in ArcGIS web maps.
-    You can add or update form elements and propagate form configurations between layers.
-    """)
+    # Show tool header
+    show_tool_header(
+        "Web Map Forms",
+        "This tool allows you to update form configurations in ArcGIS web maps. "
+        "It will identify all layers containing a specific field and apply form configuration changes to them.",
+        "📝"
+    )
     
     # Create tabs for different operations
-    tab1, tab2 = st.tabs(["Update Field", "Propagate Forms"])
+    tab1, tab2 = st.tabs(["Update Forms", "Batch Operations"])
     
     with tab1:
-        show_update_field()
+        show_update_forms()
     
     with tab2:
-        show_propagate_forms()
+        show_batch_operations()
     
     # Show help information
     show_help()
 
-def show_update_field():
-    """Display the interface for updating a field in forms"""
-    st.header("Update Field in Forms")
+def show_update_forms():
+    """Display the main form update interface"""
+    # Get GIS object
+    gis = get_gis_object()
+    if not gis:
+        return
     
-    # Web map selection
-    st.subheader("Web Map Selection")
-    
-    # Option to search for web maps
-    use_search = st.checkbox("Search for web maps", value=False, key="update_search")
-    
-    if use_search:
-        # Search for web maps
-        search_query = st.text_input("Search query", placeholder="Enter search terms", key="update_search_query")
-        
-        if search_query:
-            with st.spinner("Searching for web maps..."):
-                try:
-                    # Search for web maps using the GIS object
-                    items = st.session_state.gis.content.search(
-                        query=search_query, 
-                        item_type="Web Map",
-                        max_items=25
-                    )
-                    
-                    if items:
-                        # Create a dictionary of web map titles and IDs
-                        options = {f"{item.title} ({item.id})": item.id for item in items}
-                        
-                        # Create a selectbox for the user to choose a web map
-                        selected = st.selectbox(
-                            "Select a web map",
-                            list(options.keys()),
-                            index=None,
-                            placeholder="Choose a web map...",
-                            key="update_webmap_select"
-                        )
-                        
-                        if selected:
-                            webmap_id = options[selected]
-                            st.session_state.update_webmap_id = webmap_id
-                    else:
-                        st.info("No web maps found matching your search criteria")
-                except Exception as e:
-                    st.error(f"Error searching for web maps: {str(e)}")
-                    logger.error(f"Error searching for web maps: {str(e)}")
-    else:
-        # Direct ID input
-        webmap_id = st.text_input(
-            "Web Map ID",
-            value=st.session_state.get("update_webmap_id", ""),
-            placeholder="Enter the web map item ID",
-            key="update_webmap_id_input"
-        )
-        
-        if webmap_id:
-            st.session_state.update_webmap_id = webmap_id
-    
-    # Field parameters
-    st.subheader("Field Parameters")
-    
-    # Field name
-    field_name = st.text_input(
-        "Field Name",
-        value=st.session_state.get("field_name", "project_number"),
-        help="The name of the field to add/update in forms",
-        key="update_field_name"
+    # Web map selection using ItemSelector
+    item_selector = ItemSelector(gis, "Web Map", "webmap_forms")
+    selected_webmap = item_selector.show(
+        title="Web Map Selection",
+        help_text="Select the web map you want to update forms for.",
+        default_id=st.session_state.get("webmap_id", "")
     )
     
-    if field_name:
-        st.session_state.field_name = field_name
+    # Operation parameters
+    parameters = [
+        {
+            "name": "field_name",
+            "type": "text",
+            "label": "Field Name",
+            "help": "The name of the field to add/update in forms",
+            "default": "project_number",
+            "placeholder": "Enter field name (e.g., project_number)",
+            "required": True
+        },
+        {
+            "name": "expression_name",
+            "type": "text",
+            "label": "Expression Name",
+            "help": "The name of the expression to use for the field value",
+            "default": "expr/set-project-number",
+            "placeholder": "Enter expression name",
+            "required": True
+        },
+        {
+            "name": "expression_value",
+            "type": "text",
+            "label": "Expression Value (optional)",
+            "help": "The value for the expression (random if not provided)",
+            "default": "",
+            "placeholder": "Enter expression value or leave blank for random"
+        },
+        {
+            "name": "group_name",
+            "type": "text",
+            "label": "Group Name",
+            "help": "The name of the group to add the field to",
+            "default": "Metadata",
+            "placeholder": "Enter group name",
+            "required": True
+        },
+        {
+            "name": "field_label",
+            "type": "text",
+            "label": "Field Label (optional)",
+            "help": "The label for the field (derived from field name if not provided)",
+            "default": "",
+            "placeholder": "Enter field label or leave blank"
+        },
+        {
+            "name": "editable",
+            "type": "checkbox",
+            "label": "Editable",
+            "help": "Whether the field should be editable",
+            "default": False
+        }
+    ]
     
-    # Expression name
-    expression_name = st.text_input(
-        "Expression Name",
-        value=st.session_state.get("expression_name", "expr/set-project-number"),
-        help="The name of the expression to use for the field value",
-        key="update_expression_name"
-    )
+    param_values = show_operation_parameters("Form Parameters", parameters)
     
-    if expression_name:
-        st.session_state.expression_name = expression_name
+    # Debug mode control
+    debug_mode = show_debug_mode_control("webmap_forms")
     
-    # Expression value
-    expression_value = st.text_input(
-        "Expression Value (optional)",
-        value=st.session_state.get("expression_value", ""),
-        help="The value for the expression (random if not provided)",
-        key="update_expression_value"
-    )
+    # Validate inputs
+    required_fields = ["field_name", "expression_name", "group_name"]
+    inputs = {
+        "webmap_id": selected_webmap.id if selected_webmap else None,
+        **param_values
+    }
     
-    if expression_value:
-        st.session_state.expression_value = expression_value
-    
-    # Group name
-    group_name = st.text_input(
-        "Group Name",
-        value=st.session_state.get("group_name", "Metadata"),
-        help="The name of the group to add the field to",
-        key="update_group_name"
-    )
-    
-    if group_name:
-        st.session_state.group_name = group_name
-    
-    # Field label
-    field_label = st.text_input(
-        "Field Label (optional)",
-        value=st.session_state.get("field_label", ""),
-        help="The label for the field (derived from field name if not provided)",
-        key="update_field_label"
-    )
-    
-    if field_label:
-        st.session_state.field_label = field_label
-    
-    # Editable
-    editable = st.checkbox(
-        "Editable",
-        value=st.session_state.get("editable", False),
-        help="Whether the field should be editable",
-        key="update_editable"
-    )
-    
-    st.session_state.editable = editable
-    
-    # Debug mode
-    debug_mode = st.checkbox(
-        "Debug Mode (simulate updates)",
-        value=st.session_state.get("debug_mode", True),
-        help="When enabled, changes will be simulated but not saved to the server",
-        key="update_debug_mode"
-    )
-    
-    st.session_state.debug_mode = debug_mode
+    is_valid, errors = validate_operation_inputs(inputs, required_fields + ["webmap_id"])
     
     # Execute button
     col1, col2 = st.columns([1, 3])
     with col1:
-        update_button = st.button("Update Web Map Forms", type="primary", use_container_width=True, key="update_button")
+        update_button = st.button("Update Web Map Forms", type="primary", use_container_width=True)
     
     # Handle update request
     if update_button:
-        if not st.session_state.get("update_webmap_id"):
-            st.error("Please provide a Web Map ID")
-        elif not field_name:
-            st.error("Please provide a Field Name")
-        elif not expression_name:
-            st.error("Please provide an Expression Name")
+        if not is_valid:
+            show_validation_errors(errors)
         else:
             # Execute the update
-            execute_form_update(
-                st.session_state.update_webmap_id,
-                field_name,
-                expression_name,
-                expression_value,
-                group_name,
-                field_label,
-                editable,
+            execute_form_update_with_status(
+                inputs["webmap_id"],
+                inputs["field_name"],
+                inputs["expression_name"],
+                inputs["expression_value"] or None,
+                inputs["group_name"],
+                inputs["field_label"] or None,
+                inputs["editable"],
                 debug_mode
             )
 
-def show_propagate_forms():
-    """Display the interface for propagating form elements between layers"""
-    st.header("Propagate Form Elements")
+def show_batch_operations():
+    """Display batch operations interface"""
+    # Get batch item IDs
+    webmap_ids = show_batch_operation_interface(
+        "Form Update",
+        "web maps",
+        "Enter web map IDs, one per line"
+    )
     
-    # Web map selection
-    st.subheader("Web Map Selection")
-    
-    # Option to search for web maps
-    use_search = st.checkbox("Search for web maps", value=False, key="propagate_search")
-    
-    if use_search:
-        # Search for web maps
-        search_query = st.text_input("Search query", placeholder="Enter search terms", key="propagate_search_query")
+    if webmap_ids:
+        # Operation parameters
+        parameters = [
+            {
+                "name": "field_name",
+                "type": "text",
+                "label": "Field Name",
+                "help": "The name of the field to add/update in forms",
+                "default": "project_number",
+                "placeholder": "Enter field name (e.g., project_number)",
+                "required": True
+            },
+            {
+                "name": "expression_name",
+                "type": "text",
+                "label": "Expression Name",
+                "help": "The name of the expression to use for the field value",
+                "default": "expr/set-project-number",
+                "placeholder": "Enter expression name",
+                "required": True
+            },
+            {
+                "name": "expression_value",
+                "type": "text",
+                "label": "Expression Value (optional)",
+                "help": "The value for the expression (random if not provided)",
+                "default": "",
+                "placeholder": "Enter expression value or leave blank for random"
+            },
+            {
+                "name": "group_name",
+                "type": "text",
+                "label": "Group Name",
+                "help": "The name of the group to add the field to",
+                "default": "Metadata",
+                "placeholder": "Enter group name",
+                "required": True
+            },
+            {
+                "name": "field_label",
+                "type": "text",
+                "label": "Field Label (optional)",
+                "help": "The label for the field (derived from field name if not provided)",
+                "default": "",
+                "placeholder": "Enter field label or leave blank"
+            },
+            {
+                "name": "editable",
+                "type": "checkbox",
+                "label": "Editable",
+                "help": "Whether the field should be editable",
+                "default": False
+            }
+        ]
         
-        if search_query:
-            with st.spinner("Searching for web maps..."):
-                try:
-                    # Search for web maps using the GIS object
-                    items = st.session_state.gis.content.search(
-                        query=search_query, 
-                        item_type="Web Map",
-                        max_items=25
-                    )
-                    
-                    if items:
-                        # Create a dictionary of web map titles and IDs
-                        options = {f"{item.title} ({item.id})": item.id for item in items}
-                        
-                        # Create a selectbox for the user to choose a web map
-                        selected = st.selectbox(
-                            "Select a web map",
-                            list(options.keys()),
-                            index=None,
-                            placeholder="Choose a web map...",
-                            key="propagate_webmap_select"
-                        )
-                        
-                        if selected:
-                            webmap_id = options[selected]
-                            st.session_state.propagate_webmap_id = webmap_id
+        param_values = show_operation_parameters("Batch Parameters", parameters)
+        
+        # Debug mode control
+        debug_mode = show_debug_mode_control("batch_webmap_forms")
+        
+        # Validate inputs
+        required_fields = ["field_name", "expression_name", "group_name"]
+        is_valid, errors = validate_operation_inputs(param_values, required_fields)
+        
+        # Execute button
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            batch_button = st.button("Run Batch Update", type="primary", use_container_width=True)
+        
+        # Handle batch update request
+        if batch_button:
+            if not is_valid:
+                show_validation_errors(errors)
+            else:
+                # Execute batch update
+                execute_batch_form_update_with_status(
+                    webmap_ids,
+                    param_values["field_name"],
+                    param_values["expression_name"],
+                    param_values["expression_value"] or None,
+                    param_values["group_name"],
+                    param_values["field_label"] or None,
+                    param_values["editable"],
+                    debug_mode
+                )
+
+
+def execute_form_update_with_status(
+    webmap_id: str,
+    field_name: str,
+    expression_name: str,
+    expression_value: Optional[str],
+    group_name: str,
+    field_label: Optional[str],
+    editable: bool,
+    debug_mode: bool
+) -> None:
+    """Execute a form update with consistent status display"""
+    
+    def update_operation(webmap_id: str, field_name: str, expression_name: str, 
+                        expression_value: Optional[str], group_name: str, 
+                        field_label: Optional[str], editable: bool) -> List[str]:
+        # Set debug mode
+        patch_webmap_forms.DEBUG_MODE = debug_mode
+        
+        # Update the web map forms
+        return patch_webmap_forms.update_webmap_forms(
+            webmap_id, field_name, expression_name, expression_value,
+            group_name, field_label, editable
+        )
+    
+    # Execute with status display
+    result = execute_operation_with_status(
+        "Web Map Form Update",
+        update_operation,
+        (webmap_id, field_name, expression_name, expression_value, 
+         group_name, field_label, editable),
+        success_message=f"Successfully updated web map forms",
+        error_message="Failed to update web map forms"
+    )
+    
+    # Show results
+    if result:
+        def format_results(layers):
+            return {
+                "Layers Updated": len(layers),
+                "Layer URLs": layers
+            }
+        
+        show_operation_results(
+            "Form Update",
+            result,
+            success_criteria=lambda x: len(x) > 0,
+            result_formatter=format_results
+        )
+
+
+def execute_batch_form_update_with_status(
+    webmap_ids: List[str],
+    field_name: str,
+    expression_name: str,
+    expression_value: Optional[str],
+    group_name: str,
+    field_label: Optional[str],
+    editable: bool,
+    debug_mode: bool
+) -> None:
+    """Execute a batch form update with consistent status display"""
+    
+    def batch_update_operation(webmap_ids: List[str], field_name: str, expression_name: str,
+                              expression_value: Optional[str], group_name: str,
+                              field_label: Optional[str], editable: bool) -> Dict[str, Any]:
+        # Set debug mode
+        patch_webmap_forms.DEBUG_MODE = debug_mode
+        
+        results = {}
+        successful_updates = 0
+        failed_updates = 0
+        total_layers_updated = 0
+        
+        for i, webmap_id in enumerate(webmap_ids):
+            try:
+                # Get the web map item
+                webmap_item = patch_webmap_forms.get_webmap_item(webmap_id)
+                
+                if not webmap_item:
+                    failed_updates += 1
+                    results[webmap_id] = {"status": "error", "message": "Web map not found"}
+                    continue
+                
+                # Update the web map forms
+                updated_layers = patch_webmap_forms.update_webmap_forms(
+                    webmap_id, field_name, expression_name, expression_value,
+                    group_name, field_label, editable
+                )
+                
+                # Record results
+                if updated_layers:
+                    successful_updates += 1
+                    total_layers_updated += len(updated_layers)
+                    results[webmap_id] = {
+                        "status": "success",
+                        "title": webmap_item.title,
+                        "layers_updated": len(updated_layers),
+                        "layer_urls": updated_layers
+                    }
+                else:
+                    # Forms can still be updated even if no layers are returned
+                    successful_updates += 1
+                    results[webmap_id] = {
+                        "status": "success",
+                        "title": webmap_item.title,
+                        "layers_updated": 0,
+                        "message": "Expression info added to web map"
+                    }
+            
+            except Exception as e:
+                failed_updates += 1
+                results[webmap_id] = {"status": "error", "message": str(e)}
+                logger.error(f"Error processing web map {webmap_id} in batch update: {str(e)}")
+        
+        return {
+            "results": results,
+            "successful_updates": successful_updates,
+            "failed_updates": failed_updates,
+            "total_layers_updated": total_layers_updated,
+            "total_webmaps": len(webmap_ids)
+        }
+    
+    # Execute with status display
+    result = execute_operation_with_status(
+        "Batch Web Map Form Update",
+        batch_update_operation,
+        (webmap_ids, field_name, expression_name, expression_value,
+         group_name, field_label, editable),
+        success_message=f"Batch update completed",
+        error_message="Batch update failed"
+    )
+    
+    # Show results
+    if result:
+        def format_batch_results(batch_result):
+            return {
+                "Web Maps Processed": batch_result["total_webmaps"],
+                "Successful Updates": batch_result["successful_updates"],
+                "Failed Updates": batch_result["failed_updates"],
+                "Total Layers Updated": batch_result["total_layers_updated"]
+            }
+        
+        show_operation_results(
+            "Batch Form Update",
+            result,
+            success_criteria=lambda x: x["successful_updates"] > 0,
+            result_formatter=format_batch_results
+        )
+        
+        # Show detailed results
+        if result["results"]:
+            with st.expander("Detailed Results", expanded=False):
+                for webmap_id, webmap_result in result["results"].items():
+                    status = webmap_result["status"]
+                    if status == "success":
+                        if webmap_result.get("layers_updated", 0) > 0:
+                            st.success(f"**{webmap_result['title']}** ({webmap_id}): Updated {webmap_result['layers_updated']} layers")
+                        else:
+                            st.success(f"**{webmap_result['title']}** ({webmap_id}): {webmap_result.get('message', 'Updated successfully')}")
                     else:
-                        st.info("No web maps found matching your search criteria")
-                except Exception as e:
-                    st.error(f"Error searching for web maps: {str(e)}")
-                    logger.error(f"Error searching for web maps: {str(e)}")
-    else:
-        # Direct ID input
-        webmap_id = st.text_input(
-            "Web Map ID",
-            value=st.session_state.get("propagate_webmap_id", ""),
-            placeholder="Enter the web map item ID",
-            key="propagate_webmap_id_input"
-        )
-        
-        if webmap_id:
-            st.session_state.propagate_webmap_id = webmap_id
-    
-    # Source layer
-    st.subheader("Source Layer")
-    source_layer = st.text_input(
-        "Source Layer Name",
-        value=st.session_state.get("source_layer", ""),
-        help="The name of the source layer to copy configurations from",
-        key="propagate_source_layer"
-    )
-    
-    if source_layer:
-        st.session_state.source_layer = source_layer
-    
-    # Target layers
-    st.subheader("Target Layers")
-    use_specific_targets = st.checkbox(
-        "Specify Target Layers",
-        value=st.session_state.get("use_specific_targets", False),
-        help="If checked, only the specified layers will be updated",
-        key="propagate_use_specific_targets"
-    )
-    
-    st.session_state.use_specific_targets = use_specific_targets
-    
-    target_layers = None
-    if use_specific_targets:
-        target_input = st.text_area(
-            "Target Layer Names (one per line)",
-            value=st.session_state.get("target_input", ""),
-            help="Enter the names of the target layers, one per line",
-            key="propagate_target_input"
-        )
-        
-        if target_input:
-            st.session_state.target_input = target_input
-            target_layers = [layer.strip() for layer in target_input.split("\n") if layer.strip()]
-    
-    # Fields
-    st.subheader("Fields")
-    use_specific_fields = st.checkbox(
-        "Specify Fields",
-        value=st.session_state.get("use_specific_fields", False),
-        help="If checked, only the specified fields will be propagated",
-        key="propagate_use_specific_fields"
-    )
-    
-    st.session_state.use_specific_fields = use_specific_fields
-    
-    field_names = None
-    if use_specific_fields:
-        field_input = st.text_area(
-            "Field Names (one per line)",
-            value=st.session_state.get("field_input", ""),
-            help="Enter the names of the fields to propagate, one per line",
-            key="propagate_field_input"
-        )
-        
-        if field_input:
-            st.session_state.field_input = field_input
-            field_names = [field.strip() for field in field_input.split("\n") if field.strip()]
-    
-    # Debug mode
-    debug_mode = st.checkbox(
-        "Debug Mode (simulate updates)",
-        value=st.session_state.get("debug_mode", True),
-        help="When enabled, changes will be simulated but not saved to the server",
-        key="propagate_debug_mode"
-    )
-    
-    st.session_state.debug_mode = debug_mode
-    
-    # Execute button
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        propagate_button = st.button("Propagate Form Elements", type="primary", use_container_width=True, key="propagate_button")
-    
-    # Handle propagate request
-    if propagate_button:
-        if not st.session_state.get("propagate_webmap_id"):
-            st.error("Please provide a Web Map ID")
-        elif not source_layer:
-            st.error("Please provide a Source Layer Name")
-        else:
-            # Execute the propagation
-            execute_form_propagation(
-                st.session_state.propagate_webmap_id,
-                source_layer,
-                target_layers,
-                field_names,
-                debug_mode
-            )
+                        st.error(f"**Web Map** ({webmap_id}): {webmap_result['message']}")
 
 def execute_form_update(
     webmap_id: str,

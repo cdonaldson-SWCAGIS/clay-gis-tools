@@ -1,220 +1,476 @@
-/* Streamlit Custom CSS */
-/* VSCode-esque styling */
+/* GitHub Light Theme for Streamlit */
+/* Clean, professional styling inspired by GitHub's design system */
 
-/* Main container */
+/* CSS Custom Properties for consistent theming */
+:root {
+  --gh-color-canvas-default: #ffffff;
+  --gh-color-canvas-subtle: #f6f8fa;
+  --gh-color-canvas-inset: #f6f8fa;
+  --gh-color-fg-default: #24292f;
+  --gh-color-fg-muted: #656d76;
+  --gh-color-fg-subtle: #8c959f;
+  --gh-color-border-default: #d0d7de;
+  --gh-color-border-muted: #d8dee4;
+  --gh-color-accent-emphasis: #0969da;
+  --gh-color-accent-fg: #0969da;
+  --gh-color-success-emphasis: #1a7f37;
+  --gh-color-attention-emphasis: #9a6700;
+  --gh-color-danger-emphasis: #cf222e;
+  --gh-color-shadow-small: 0 1px 0 rgba(31, 35, 40, 0.04);
+  --gh-color-shadow-medium: 0 3px 6px rgba(140, 149, 159, 0.15);
+  --gh-borderRadius-medium: 6px;
+  --gh-borderRadius-large: 8px;
+}
+
+/* Global Styles */
 .main .block-container {
   padding-top: 2rem;
   padding-bottom: 2rem;
+  background-color: var(--gh-color-canvas-default);
 }
 
-/* Sidebar */
+/* Remove Streamlit branding and menu */
+#MainMenu {
+  visibility: hidden;
+}
+footer {
+  visibility: hidden;
+}
+header {
+  visibility: hidden;
+}
+
+/* Sidebar Styling */
 .sidebar .sidebar-content {
-  background-color: #252526;
+  background-color: var(--gh-color-canvas-subtle);
+  border-right: 1px solid var(--gh-color-border-default);
 }
 
-/* Headers */
+.sidebar .sidebar-content .block-container {
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+
+/* Typography */
 h1,
 h2,
 h3,
 h4,
 h5,
 h6 {
-  color: #cccccc;
-  font-weight: 500;
+  color: var(--gh-color-fg-default);
+  font-weight: 600;
+  line-height: 1.25;
+  margin-bottom: 1rem;
 }
 
 h1 {
   font-size: 2rem;
-  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--gh-color-border-muted);
+  padding-bottom: 0.5rem;
 }
 
 h2 {
   font-size: 1.5rem;
-  margin-bottom: 1rem;
+  margin-top: 1.5rem;
 }
 
 h3 {
-  font-size: 1.2rem;
-  margin-bottom: 0.8rem;
+  font-size: 1.25rem;
+  margin-top: 1.25rem;
 }
 
-/* Code blocks */
-code {
-  color: #ce9178;
-  background-color: #1e1e1e;
-  padding: 0.2em 0.4em;
-  border-radius: 3px;
-  font-size: 85%;
-  font-family: "Consolas", "Monaco", "Courier New", monospace;
+p,
+div,
+span {
+  color: var(--gh-color-fg-default);
 }
 
-pre {
-  background-color: #1e1e1e;
-  border: 1px solid #333333;
-  border-radius: 3px;
-  padding: 1em;
-}
-
-/* Buttons */
-.stButton > button {
-  background-color: #2c2c2c;
-  color: #d4d4d4;
-  border: 1px solid #3c3c3c;
-  border-radius: 3px;
-  transition: all 0.2s;
-}
-
-.stButton > button:hover {
-  background-color: #3c3c3c;
-  border-color: #007acc;
-}
-
-/* Primary buttons */
-.stButton > button[data-baseweb="button"][kind="primary"] {
-  background-color: #007acc;
-  color: white;
-  border: none;
-}
-
-.stButton > button[data-baseweb="button"][kind="primary"]:hover {
-  background-color: #0098ff;
-}
-
-/* Input fields */
+/* Input Fields - GitHub Style */
 .stTextInput > div > div > input,
-.stTextArea > div > div > textarea {
-  background-color: #3c3c3c;
-  color: #d4d4d4;
-  border: 1px solid #3c3c3c;
+.stTextArea > div > div > textarea,
+.stNumberInput > div > div > input {
+  background-color: var(--gh-color-canvas-default) !important;
+  color: var(--gh-color-fg-default) !important;
+  border: 1px solid var(--gh-color-border-default) !important;
+  border-radius: var(--gh-borderRadius-medium) !important;
+  padding: 8px 12px !important;
+  font-size: 14px !important;
+  line-height: 1.45 !important;
+  transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out !important;
+  box-shadow: var(--gh-color-shadow-small) !important;
 }
 
 .stTextInput > div > div > input:focus,
-.stTextArea > div > div > textarea:focus {
-  border-color: #007acc;
+.stTextArea > div > div > textarea:focus,
+.stNumberInput > div > div > input:focus {
+  border-color: var(--gh-color-accent-emphasis) !important;
+  box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.12) !important;
+  outline: none !important;
+}
+
+.stTextInput > div > div > input:hover,
+.stTextArea > div > div > textarea:hover,
+.stNumberInput > div > div > input:hover {
+  border-color: var(--gh-color-border-default) !important;
+  background-color: var(--gh-color-canvas-subtle) !important;
+}
+
+/* Placeholder text styling */
+.stTextInput > div > div > input::placeholder,
+.stTextArea > div > div > textarea::placeholder {
+  color: var(--gh-color-fg-muted) !important;
+  opacity: 1 !important;
 }
 
 /* Select boxes */
 .stSelectbox > div > div > div {
-  background-color: #3c3c3c;
-  color: #d4d4d4;
-  border: 1px solid #3c3c3c;
+  background-color: var(--gh-color-canvas-default) !important;
+  color: var(--gh-color-fg-default) !important;
+  border: 1px solid var(--gh-color-border-default) !important;
+  border-radius: var(--gh-borderRadius-medium) !important;
+  box-shadow: var(--gh-color-shadow-small) !important;
 }
 
-/* Checkboxes */
-.stCheckbox > div > div > label {
-  color: #d4d4d4;
+.stSelectbox > div > div > div:hover {
+  border-color: var(--gh-color-border-default) !important;
+  background-color: var(--gh-color-canvas-subtle) !important;
+}
+
+.stSelectbox > div > div > div[aria-expanded="true"] {
+  border-color: var(--gh-color-accent-emphasis) !important;
+  box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.12) !important;
+}
+
+/* Multiselect */
+.stMultiSelect > div > div > div {
+  background-color: var(--gh-color-canvas-default) !important;
+  border: 1px solid var(--gh-color-border-default) !important;
+  border-radius: var(--gh-borderRadius-medium) !important;
+}
+
+/* Buttons - GitHub Style */
+.stButton > button {
+  background-color: var(--gh-color-canvas-subtle) !important;
+  color: var(--gh-color-fg-default) !important;
+  border: 1px solid var(--gh-color-border-default) !important;
+  border-radius: var(--gh-borderRadius-medium) !important;
+  padding: 6px 16px !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  line-height: 1.45 !important;
+  transition: all 0.2s ease-in-out !important;
+  box-shadow: var(--gh-color-shadow-small) !important;
+}
+
+.stButton > button:hover {
+  background-color: #f3f4f6 !important;
+  border-color: var(--gh-color-border-default) !important;
+  box-shadow: var(--gh-color-shadow-medium) !important;
+}
+
+.stButton > button:active {
+  background-color: #e5e7ea !important;
+  box-shadow: inset 0 1px 0 rgba(31, 35, 40, 0.12) !important;
+}
+
+/* Primary buttons */
+.stButton > button[kind="primary"] {
+  background-color: var(--gh-color-accent-emphasis) !important;
+  color: #ffffff !important;
+  border-color: var(--gh-color-accent-emphasis) !important;
+}
+
+.stButton > button[kind="primary"]:hover {
+  background-color: #0860ca !important;
+  border-color: #0860ca !important;
+}
+
+.stButton > button[kind="primary"]:active {
+  background-color: #0757ba !important;
+  border-color: #0757ba !important;
+}
+
+/* Checkboxes and Radio buttons */
+.stCheckbox > div > div > label,
+.stRadio > div > div > label {
+  color: var(--gh-color-fg-default) !important;
+  font-size: 14px !important;
+}
+
+.stCheckbox > div > div > div > input,
+.stRadio > div > div > div > input {
+  accent-color: var(--gh-color-accent-emphasis) !important;
+}
+
+/* File uploader */
+.stFileUploader > div > div {
+  background-color: var(--gh-color-canvas-subtle) !important;
+  border: 2px dashed var(--gh-color-border-default) !important;
+  border-radius: var(--gh-borderRadius-large) !important;
+  color: var(--gh-color-fg-default) !important;
+}
+
+.stFileUploader > div > div:hover {
+  border-color: var(--gh-color-accent-emphasis) !important;
+  background-color: rgba(9, 105, 218, 0.05) !important;
 }
 
 /* Progress bars */
 .stProgress > div > div > div > div {
-  background-color: #007acc;
+  background-color: var(--gh-color-accent-emphasis) !important;
+  border-radius: 3px !important;
+}
+
+.stProgress > div > div > div {
+  background-color: var(--gh-color-canvas-subtle) !important;
+  border-radius: 3px !important;
 }
 
 /* Expanders */
 .streamlit-expanderHeader {
-  color: #d4d4d4;
-  background-color: #2c2c2c;
-  border: 1px solid #3c3c3c;
+  color: var(--gh-color-fg-default) !important;
+  background-color: var(--gh-color-canvas-subtle) !important;
+  border: 1px solid var(--gh-color-border-default) !important;
+  border-radius: var(--gh-borderRadius-medium) !important;
+  font-weight: 500 !important;
 }
 
 .streamlit-expanderHeader:hover {
-  background-color: #3c3c3c;
+  background-color: #f3f4f6 !important;
+}
+
+.streamlit-expanderContent {
+  border: 1px solid var(--gh-color-border-default) !important;
+  border-top: none !important;
+  border-radius: 0 0 var(--gh-borderRadius-medium) var(--gh-borderRadius-medium) !important;
+  background-color: var(--gh-color-canvas-default) !important;
 }
 
 /* Tabs */
 .stTabs [data-baseweb="tab-list"] {
-  gap: 2px;
+  gap: 0px;
+  border-bottom: 1px solid var(--gh-color-border-default);
 }
 
 .stTabs [data-baseweb="tab"] {
-  background-color: #2c2c2c;
-  color: #d4d4d4;
-  border-radius: 4px 4px 0 0;
-  padding: 0.5rem 1rem;
-  border: 1px solid #3c3c3c;
-  border-bottom: none;
+  background-color: transparent !important;
+  color: var(--gh-color-fg-muted) !important;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  padding: 8px 16px !important;
+  font-weight: 500 !important;
+  transition: all 0.2s ease-in-out !important;
+}
+
+.stTabs [data-baseweb="tab"]:hover {
+  color: var(--gh-color-fg-default) !important;
+  background-color: var(--gh-color-canvas-subtle) !important;
 }
 
 .stTabs [data-baseweb="tab"][aria-selected="true"] {
-  background-color: #1e1e1e;
-  color: #ffffff;
-  border-top: 2px solid #007acc;
+  color: var(--gh-color-fg-default) !important;
+  border-bottom-color: var(--gh-color-accent-emphasis) !important;
+  background-color: var(--gh-color-canvas-default) !important;
 }
 
 /* Tables */
-.stTable {
-  border: 1px solid #3c3c3c;
+.stTable,
+.stDataFrame {
+  border: 1px solid var(--gh-color-border-default) !important;
+  border-radius: var(--gh-borderRadius-medium) !important;
+  overflow: hidden !important;
 }
 
-.stTable thead tr th {
-  background-color: #2c2c2c;
-  color: #d4d4d4;
-  padding: 0.5rem;
+.stTable thead tr th,
+.stDataFrame thead tr th {
+  background-color: var(--gh-color-canvas-subtle) !important;
+  color: var(--gh-color-fg-default) !important;
+  border-bottom: 1px solid var(--gh-color-border-default) !important;
+  padding: 8px 12px !important;
+  font-weight: 600 !important;
 }
 
-.stTable tbody tr:nth-child(odd) {
-  background-color: #1e1e1e;
+.stTable tbody tr:nth-child(odd),
+.stDataFrame tbody tr:nth-child(odd) {
+  background-color: var(--gh-color-canvas-default) !important;
 }
 
-.stTable tbody tr:nth-child(even) {
-  background-color: #252526;
+.stTable tbody tr:nth-child(even),
+.stDataFrame tbody tr:nth-child(even) {
+  background-color: var(--gh-color-canvas-subtle) !important;
 }
 
-/* Alerts and messages */
+.stTable tbody tr td,
+.stDataFrame tbody tr td {
+  color: var(--gh-color-fg-default) !important;
+  border-bottom: 1px solid var(--gh-color-border-muted) !important;
+  padding: 8px 12px !important;
+}
+
+/* Alerts and Messages */
 .stAlert {
-  background-color: #252526;
-  color: #d4d4d4;
-  border: 1px solid #3c3c3c;
+  border-radius: var(--gh-borderRadius-medium) !important;
+  border: 1px solid var(--gh-color-border-default) !important;
+  padding: 12px 16px !important;
+  margin: 8px 0 !important;
 }
 
-.stAlert[data-baseweb="notification"] {
-  border-left-color: #007acc;
-}
-
-/* Info alert */
-div[data-testid="stInfoBox"] {
-  background-color: rgba(0, 122, 204, 0.1);
-  border-left-color: #007acc;
-}
-
-/* Warning alert */
-div[data-testid="stWarningBox"] {
-  background-color: rgba(255, 170, 0, 0.1);
-  border-left-color: #ffaa00;
-}
-
-/* Error alert */
-div[data-testid="stErrorBox"] {
-  background-color: rgba(255, 76, 76, 0.1);
-  border-left-color: #ff4c4c;
-}
-
-/* Success alert */
+/* Success alerts */
 div[data-testid="stSuccessBox"] {
-  background-color: rgba(40, 167, 69, 0.1);
-  border-left-color: #28a745;
+  background-color: #dafbe1 !important;
+  border-left: 4px solid var(--gh-color-success-emphasis) !important;
+  color: #0f5132 !important;
 }
 
-/* Tooltips */
-.stTooltipIcon {
-  color: #007acc;
+/* Info alerts */
+div[data-testid="stInfoBox"] {
+  background-color: #dbeafe !important;
+  border-left: 4px solid var(--gh-color-accent-emphasis) !important;
+  color: #0c4a6e !important;
+}
+
+/* Warning alerts */
+div[data-testid="stWarningBox"] {
+  background-color: #fef3c7 !important;
+  border-left: 4px solid var(--gh-color-attention-emphasis) !important;
+  color: #92400e !important;
+}
+
+/* Error alerts */
+div[data-testid="stErrorBox"] {
+  background-color: #fee2e2 !important;
+  border-left: 4px solid var(--gh-color-danger-emphasis) !important;
+  color: #991b1b !important;
+}
+
+/* Code blocks */
+code {
+  color: #e36209 !important;
+  background-color: rgba(175, 184, 193, 0.2) !important;
+  padding: 2px 4px !important;
+  border-radius: 3px !important;
+  font-size: 85% !important;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas,
+    "Liberation Mono", Menlo, monospace !important;
+}
+
+pre {
+  background-color: var(--gh-color-canvas-subtle) !important;
+  border: 1px solid var(--gh-color-border-default) !important;
+  border-radius: var(--gh-borderRadius-medium) !important;
+  padding: 16px !important;
+  overflow-x: auto !important;
+}
+
+pre code {
+  background-color: transparent !important;
+  color: var(--gh-color-fg-default) !important;
+  padding: 0 !important;
+}
+
+/* Metrics */
+.metric-container {
+  background-color: var(--gh-color-canvas-subtle) !important;
+  border: 1px solid var(--gh-color-border-default) !important;
+  border-radius: var(--gh-borderRadius-medium) !important;
+  padding: 16px !important;
+}
+
+/* Sidebar navigation styling */
+.sidebar .sidebar-content .stRadio > div {
+  background-color: transparent !important;
+}
+
+.sidebar .sidebar-content .stRadio > div > div > label {
+  background-color: transparent !important;
+  padding: 8px 12px !important;
+  border-radius: var(--gh-borderRadius-medium) !important;
+  transition: background-color 0.2s ease-in-out !important;
+}
+
+.sidebar .sidebar-content .stRadio > div > div > label:hover {
+  background-color: rgba(9, 105, 218, 0.1) !important;
 }
 
 /* Scrollbars */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #1e1e1e;
+  background: var(--gh-color-canvas-subtle);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #3c3c3c;
-  border-radius: 5px;
+  background: var(--gh-color-border-default);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555555;
+  background: var(--gh-color-fg-muted);
+}
+
+/* Loading spinner */
+.stSpinner > div {
+  border-top-color: var(--gh-color-accent-emphasis) !important;
+}
+
+/* Tooltips */
+.stTooltipIcon {
+  color: var(--gh-color-accent-emphasis) !important;
+}
+
+/* JSON viewer */
+.stJson {
+  background-color: var(--gh-color-canvas-subtle) !important;
+  border: 1px solid var(--gh-color-border-default) !important;
+  border-radius: var(--gh-borderRadius-medium) !important;
+}
+
+/* Ensure proper text contrast throughout */
+.stMarkdown,
+.stText {
+  color: var(--gh-color-fg-default) !important;
+}
+
+/* Caption text */
+.caption {
+  color: var(--gh-color-fg-muted) !important;
+  font-size: 12px !important;
+}
+
+/* Links */
+a {
+  color: var(--gh-color-accent-emphasis) !important;
+  text-decoration: none !important;
+}
+
+a:hover {
+  text-decoration: underline !important;
+}
+
+/* Ensure all text inputs have proper styling */
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="password"],
+textarea,
+select {
+  background-color: var(--gh-color-canvas-default) !important;
+  color: var(--gh-color-fg-default) !important;
+  border: 1px solid var(--gh-color-border-default) !important;
+  border-radius: var(--gh-borderRadius-medium) !important;
+}
+
+/* Focus states for accessibility */
+input:focus,
+textarea:focus,
+select:focus,
+button:focus {
+  outline: 2px solid var(--gh-color-accent-emphasis) !important;
+  outline-offset: 2px !important;
 }

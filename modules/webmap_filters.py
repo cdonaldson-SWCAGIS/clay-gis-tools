@@ -2,7 +2,16 @@ import streamlit as st
 import logging
 import sys
 import os
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
+
+# Import utility modules
+from modules.item_utils import ItemSelector, get_webmap_item
+from modules.common_operations import (
+    ensure_authentication, get_gis_object, show_debug_mode_control,
+    show_operation_parameters, validate_operation_inputs, show_validation_errors,
+    execute_operation_with_status, show_operation_results, show_batch_operation_interface,
+    create_help_section, show_tool_header
+)
 
 # Configure logging
 logger = logging.getLogger("webmap_filters")
@@ -16,118 +25,80 @@ except ImportError:
 
 def show():
     """Display the Web Map Filters interface"""
-    st.title("Web Map Filters")
-    
-    # Check authentication
-    if not st.session_state.authenticated:
-        st.warning("Please authenticate first")
-        st.info("Use the navigation sidebar to go to the Authentication page")
+    # Check authentication first
+    if not ensure_authentication():
         return
     
-    # Display information about the tool
-    st.markdown("""
-    ## Web Map Filter Utility
-    
-    This tool allows you to update definition expressions (filters) in ArcGIS web maps.
-    It will identify all layers containing a specific field and apply a new filter expression to them.
-    """)
+    # Show tool header
+    show_tool_header(
+        "Web Map Filters",
+        "This tool allows you to update definition expressions (filters) in ArcGIS web maps. "
+        "It will identify all layers containing a specific field and apply a new filter expression to them.",
+        "🔍"
+    )
     
     # Create tabs for different operations
-    tab1, tab2 = st.tabs(["Update Filters", "Advanced Options"])
+    tab1, tab2 = st.tabs(["Update Filters", "Batch Operations"])
     
     with tab1:
         show_update_filters()
     
     with tab2:
-        show_advanced_options()
+        show_batch_operations()
     
     # Show help information
     show_help()
 
 def show_update_filters():
     """Display the main filter update interface"""
-    # Web map selection
-    st.subheader("Web Map Selection")
+    # Get GIS object
+    gis = get_gis_object()
+    if not gis:
+        return
     
-    # Option to search for web maps
-    use_search = st.checkbox("Search for web maps", value=False)
-    
-    if use_search:
-        # Search for web maps
-        search_query = st.text_input("Search query", placeholder="Enter search terms")
-        
-        if search_query:
-            with st.spinner("Searching for web maps..."):
-                try:
-                    # Search for web maps using the GIS object
-                    items = st.session_state.gis.content.search(
-                        query=search_query, 
-                        item_type="Web Map",
-                        max_items=25
-                    )
-                    
-                    if items:
-                        # Create a dictionary of web map titles and IDs
-                        options = {f"{item.title} ({item.id})": item.id for item in items}
-                        
-                        # Create a selectbox for the user to choose a web map
-                        selected = st.selectbox(
-                            "Select a web map",
-                            list(options.keys()),
-                            index=None,
-                            placeholder="Choose a web map..."
-                        )
-                        
-                        if selected:
-                            webmap_id = options[selected]
-                            st.session_state.webmap_id = webmap_id
-                    else:
-                        st.info("No web maps found matching your search criteria")
-                except Exception as e:
-                    st.error(f"Error searching for web maps: {str(e)}")
-                    logger.error(f"Error searching for web maps: {str(e)}")
-    else:
-        # Direct ID input
-        webmap_id = st.text_input(
-            "Web Map ID",
-            value=st.session_state.get("webmap_id", ""),
-            placeholder="Enter the web map item ID"
-        )
-        
-        if webmap_id:
-            st.session_state.webmap_id = webmap_id
-    
-    # Filter parameters
-    st.subheader("Filter Parameters")
-    
-    # Target field
-    target_field = st.text_input(
-        "Target Field",
-        value=st.session_state.get("target_field", "project_number"),
-        help="The field name to search for in layers"
+    # Web map selection using ItemSelector
+    item_selector = ItemSelector(gis, "Web Map", "webmap_filters")
+    selected_webmap = item_selector.show(
+        title="Web Map Selection",
+        help_text="Select the web map you want to update filters for.",
+        default_id=st.session_state.get("webmap_id", "")
     )
     
-    if target_field:
-        st.session_state.target_field = target_field
+    # Operation parameters
+    parameters = [
+        {
+            "name": "target_field",
+            "type": "text",
+            "label": "Target Field",
+            "help": "The field name to search for in layers",
+            "default": "project_number",
+            "placeholder": "Enter field name (e.g., project_number)",
+            "required": True
+        },
+        {
+            "name": "new_filter",
+            "type": "textarea",
+            "label": "New Filter Expression",
+            "help": "The SQL expression to apply to matching layers",
+            "default": "project_number = '123456'",
+            "placeholder": "Enter SQL WHERE clause",
+            "required": True
+        }
+    ]
     
-    # New filter expression
-    new_filter = st.text_area(
-        "New Filter Expression",
-        value=st.session_state.get("new_filter", "project_number = '123456'"),
-        help="The SQL expression to apply to matching layers"
-    )
+    param_values = show_operation_parameters("Filter Parameters", parameters)
     
-    if new_filter:
-        st.session_state.new_filter = new_filter
+    # Debug mode control
+    debug_mode = show_debug_mode_control("webmap_filters")
     
-    # Debug mode
-    debug_mode = st.checkbox(
-        "Debug Mode (simulate updates)",
-        value=st.session_state.get("debug_mode", True),
-        help="When enabled, changes will be simulated but not saved to the server"
-    )
+    # Validate inputs
+    required_fields = ["target_field", "new_filter"]
+    inputs = {
+        "webmap_id": selected_webmap.id if selected_webmap else None,
+        **param_values
+    }
     
-    st.session_state.debug_mode = debug_mode
+    is_valid, errors = validate_operation_inputs(inputs, required_fields + ["webmap_id"])
     
     # Execute button
     col1, col2 = st.columns([1, 3])
@@ -136,252 +107,210 @@ def show_update_filters():
     
     # Handle update request
     if update_button:
-        if not st.session_state.get("webmap_id"):
-            st.error("Please provide a Web Map ID")
-        elif not target_field:
-            st.error("Please provide a Target Field")
-        elif not new_filter:
-            st.error("Please provide a Filter Expression")
+        if not is_valid:
+            show_validation_errors(errors)
         else:
             # Execute the update
-            execute_filter_update(st.session_state.webmap_id, target_field, new_filter, debug_mode)
+            execute_filter_update_with_status(
+                inputs["webmap_id"],
+                inputs["target_field"],
+                inputs["new_filter"],
+                debug_mode
+            )
 
-def show_advanced_options():
-    """Display advanced options for filter updates"""
-    st.subheader("Advanced Options")
-    
-    # Batch processing
-    st.markdown("### Batch Processing")
-    st.markdown("""
-    You can update multiple web maps at once by providing a list of web map IDs.
-    Each web map will be processed with the same target field and filter expression.
-    """)
-    
-    # Web map IDs
-    webmap_ids = st.text_area(
-        "Web Map IDs (one per line)",
-        placeholder="Enter web map IDs, one per line"
+def show_batch_operations():
+    """Display batch operations interface"""
+    # Get batch item IDs
+    webmap_ids = show_batch_operation_interface(
+        "Filter Update",
+        "web maps",
+        "Enter web map IDs, one per line"
     )
     
-    # Target field and filter (same as in the main tab)
-    batch_target_field = st.text_input(
-        "Target Field",
-        value=st.session_state.get("target_field", "project_number")
-    )
-    
-    batch_new_filter = st.text_area(
-        "New Filter Expression",
-        value=st.session_state.get("new_filter", "project_number = '123456'")
-    )
-    
-    # Debug mode
-    batch_debug_mode = st.checkbox(
-        "Debug Mode (simulate updates)",
-        value=st.session_state.get("debug_mode", True)
-    )
-    
-    # Execute batch button
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        batch_button = st.button("Run Batch Update", type="primary", use_container_width=True)
-    
-    # Handle batch update request
-    if batch_button:
-        if not webmap_ids:
-            st.error("Please provide at least one Web Map ID")
-        elif not batch_target_field:
-            st.error("Please provide a Target Field")
-        elif not batch_new_filter:
-            st.error("Please provide a Filter Expression")
-        else:
-            # Parse web map IDs
-            ids = [id.strip() for id in webmap_ids.split("\n") if id.strip()]
-            
-            if not ids:
-                st.error("No valid Web Map IDs provided")
+    if webmap_ids:
+        # Operation parameters
+        parameters = [
+            {
+                "name": "target_field",
+                "type": "text",
+                "label": "Target Field",
+                "help": "The field name to search for in layers",
+                "default": "project_number",
+                "placeholder": "Enter field name (e.g., project_number)",
+                "required": True
+            },
+            {
+                "name": "new_filter",
+                "type": "textarea",
+                "label": "New Filter Expression",
+                "help": "The SQL expression to apply to matching layers",
+                "default": "project_number = '123456'",
+                "placeholder": "Enter SQL WHERE clause",
+                "required": True
+            }
+        ]
+        
+        param_values = show_operation_parameters("Batch Parameters", parameters)
+        
+        # Debug mode control
+        debug_mode = show_debug_mode_control("batch_webmap_filters")
+        
+        # Validate inputs
+        required_fields = ["target_field", "new_filter"]
+        is_valid, errors = validate_operation_inputs(param_values, required_fields)
+        
+        # Execute button
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            batch_button = st.button("Run Batch Update", type="primary", use_container_width=True)
+        
+        # Handle batch update request
+        if batch_button:
+            if not is_valid:
+                show_validation_errors(errors)
             else:
                 # Execute batch update
-                execute_batch_filter_update(ids, batch_target_field, batch_new_filter, batch_debug_mode)
+                execute_batch_filter_update_with_status(
+                    webmap_ids,
+                    param_values["target_field"],
+                    param_values["new_filter"],
+                    debug_mode
+                )
 
-def execute_filter_update(webmap_id: str, target_field: str, new_filter: str, debug_mode: bool) -> None:
-    """
-    Execute a filter update on a single web map
+
+def execute_filter_update_with_status(webmap_id: str, target_field: str, new_filter: str, debug_mode: bool) -> None:
+    """Execute a filter update with consistent status display"""
     
-    Args:
-        webmap_id: The ID of the web map to update
-        target_field: The field name to search for in layers
-        new_filter: The SQL expression to apply to matching layers
-        debug_mode: Whether to simulate updates without saving changes
-    """
-    # Create a status container
-    status = st.empty()
-    status.info("Starting update process...")
-    
-    # Create a progress bar
-    progress_bar = st.progress(0)
-    
-    try:
+    def update_operation(webmap_id: str, target_field: str, new_filter: str) -> List[str]:
         # Set debug mode
         patch_webmap_filters.DEBUG_MODE = debug_mode
         
-        # Update progress
-        progress_bar.progress(25)
-        status.info("Retrieving web map...")
-        
-        # Get the web map item
-        webmap_item = patch_webmap_filters.get_webmap_item(webmap_id)
-        
-        if not webmap_item:
-            status.error(f"Web map with ID {webmap_id} was not found")
-            progress_bar.empty()
-            return
-        
-        # Update progress
-        progress_bar.progress(50)
-        status.info(f"Processing web map: {webmap_item.title}...")
-        
         # Update the web map
-        updated_layers = patch_webmap_filters.update_webmap_definition_by_field(
+        return patch_webmap_filters.update_webmap_definition_by_field(
             webmap_id, target_field, new_filter
         )
+    
+    # Execute with status display
+    result = execute_operation_with_status(
+        "Web Map Filter Update",
+        update_operation,
+        (webmap_id, target_field, new_filter),
+        success_message=f"Successfully updated web map filters",
+        error_message="Failed to update web map filters"
+    )
+    
+    # Show results
+    if result:
+        def format_results(layers):
+            return {
+                "Layers Updated": len(layers),
+                "Layer URLs": layers
+            }
         
-        # Update progress
-        progress_bar.progress(100)
+        show_operation_results(
+            "Filter Update",
+            result,
+            success_criteria=lambda x: len(x) > 0,
+            result_formatter=format_results
+        )
+
+
+def execute_batch_filter_update_with_status(webmap_ids: List[str], target_field: str, new_filter: str, debug_mode: bool) -> None:
+    """Execute a batch filter update with consistent status display"""
+    
+    def batch_update_operation(webmap_ids: List[str], target_field: str, new_filter: str) -> Dict[str, Any]:
+        # Set debug mode
+        patch_webmap_filters.DEBUG_MODE = debug_mode
         
-        # Display results
-        if updated_layers:
-            status.success(f"Successfully updated {len(updated_layers)} layers")
-            
-            # Show layer details
-            st.subheader("Updated Layers")
-            for i, layer_url in enumerate(updated_layers, 1):
-                st.write(f"{i}. {layer_url}")
-            
-            if debug_mode:
-                st.info("Running in DEBUG mode - changes were simulated and not saved to the server")
-            else:
-                st.success("Changes were verified and saved to the server")
-        else:
-            status.warning("No layers were updated")
-            
-            if not debug_mode:
-                st.error(
-                    "Possible issues:\n"
-                    "  • The web map may not contain layers with the target field\n"
-                    "  • The server may not have accepted the changes\n"
-                    "  • There might be permission issues with the web map"
+        results = {}
+        successful_updates = 0
+        failed_updates = 0
+        total_layers_updated = 0
+        
+        for i, webmap_id in enumerate(webmap_ids):
+            try:
+                # Get the web map item
+                webmap_item = patch_webmap_filters.get_webmap_item(webmap_id)
+                
+                if not webmap_item:
+                    failed_updates += 1
+                    results[webmap_id] = {"status": "error", "message": "Web map not found"}
+                    continue
+                
+                # Update the web map
+                updated_layers = patch_webmap_filters.update_webmap_definition_by_field(
+                    webmap_id, target_field, new_filter
                 )
                 
-                st.info("Try running with Debug Mode enabled to see more details")
-    except Exception as e:
-        status.error(f"Error updating web map: {str(e)}")
-        logger.error(f"Error updating web map {webmap_id}: {str(e)}")
-        progress_bar.empty()
+                # Record results
+                if updated_layers:
+                    successful_updates += 1
+                    total_layers_updated += len(updated_layers)
+                    results[webmap_id] = {
+                        "status": "success",
+                        "title": webmap_item.title,
+                        "layers_updated": len(updated_layers),
+                        "layer_urls": updated_layers
+                    }
+                else:
+                    failed_updates += 1
+                    results[webmap_id] = {
+                        "status": "warning",
+                        "title": webmap_item.title,
+                        "message": "No layers were updated"
+                    }
+            
+            except Exception as e:
+                failed_updates += 1
+                results[webmap_id] = {"status": "error", "message": str(e)}
+                logger.error(f"Error processing web map {webmap_id} in batch update: {str(e)}")
+        
+        return {
+            "results": results,
+            "successful_updates": successful_updates,
+            "failed_updates": failed_updates,
+            "total_layers_updated": total_layers_updated,
+            "total_webmaps": len(webmap_ids)
+        }
+    
+    # Execute with status display
+    result = execute_operation_with_status(
+        "Batch Web Map Filter Update",
+        batch_update_operation,
+        (webmap_ids, target_field, new_filter),
+        success_message=f"Batch update completed",
+        error_message="Batch update failed"
+    )
+    
+    # Show results
+    if result:
+        def format_batch_results(batch_result):
+            return {
+                "Web Maps Processed": batch_result["total_webmaps"],
+                "Successful Updates": batch_result["successful_updates"],
+                "Failed Updates": batch_result["failed_updates"],
+                "Total Layers Updated": batch_result["total_layers_updated"]
+            }
+        
+        show_operation_results(
+            "Batch Filter Update",
+            result,
+            success_criteria=lambda x: x["successful_updates"] > 0,
+            result_formatter=format_batch_results
+        )
+        
+        # Show detailed results
+        if result["results"]:
+            with st.expander("Detailed Results", expanded=False):
+                for webmap_id, webmap_result in result["results"].items():
+                    status = webmap_result["status"]
+                    if status == "success":
+                        st.success(f"**{webmap_result['title']}** ({webmap_id}): Updated {webmap_result['layers_updated']} layers")
+                    elif status == "warning":
+                        st.warning(f"**{webmap_result.get('title', 'Unknown')}** ({webmap_id}): {webmap_result['message']}")
+                    else:
+                        st.error(f"**Web Map** ({webmap_id}): {webmap_result['message']}")
 
-def execute_batch_filter_update(webmap_ids: List[str], target_field: str, new_filter: str, debug_mode: bool) -> None:
-    """
-    Execute a filter update on multiple web maps
-    
-    Args:
-        webmap_ids: List of web map IDs to update
-        target_field: The field name to search for in layers
-        new_filter: The SQL expression to apply to matching layers
-        debug_mode: Whether to simulate updates without saving changes
-    """
-    # Set debug mode
-    patch_webmap_filters.DEBUG_MODE = debug_mode
-    
-    # Create a status container
-    status = st.empty()
-    status.info(f"Starting batch update for {len(webmap_ids)} web maps...")
-    
-    # Create a progress bar
-    progress_bar = st.progress(0)
-    
-    # Create an expander for detailed results
-    with st.expander("Batch Update Results", expanded=True):
-        results_container = st.container()
-    
-    # Track results
-    successful_updates = 0
-    failed_updates = 0
-    total_layers_updated = 0
-    results = {}
-    
-    # Process each web map
-    for i, webmap_id in enumerate(webmap_ids):
-        # Update progress
-        progress = int((i / len(webmap_ids)) * 100)
-        progress_bar.progress(progress)
-        status.info(f"Processing web map {i+1} of {len(webmap_ids)}: {webmap_id}")
-        
-        try:
-            # Get the web map item
-            webmap_item = patch_webmap_filters.get_webmap_item(webmap_id)
-            
-            if not webmap_item:
-                with results_container:
-                    st.error(f"Web map with ID {webmap_id} was not found")
-                failed_updates += 1
-                results[webmap_id] = {"status": "error", "message": "Web map not found"}
-                continue
-            
-            # Update the web map
-            updated_layers = patch_webmap_filters.update_webmap_definition_by_field(
-                webmap_id, target_field, new_filter
-            )
-            
-            # Record results
-            if updated_layers:
-                successful_updates += 1
-                total_layers_updated += len(updated_layers)
-                results[webmap_id] = {
-                    "status": "success",
-                    "title": webmap_item.title,
-                    "layers_updated": len(updated_layers),
-                    "layer_urls": updated_layers
-                }
-                
-                with results_container:
-                    st.success(f"Web map '{webmap_item.title}' ({webmap_id}): Updated {len(updated_layers)} layers")
-            else:
-                failed_updates += 1
-                results[webmap_id] = {
-                    "status": "warning",
-                    "title": webmap_item.title,
-                    "message": "No layers were updated"
-                }
-                
-                with results_container:
-                    st.warning(f"Web map '{webmap_item.title}' ({webmap_id}): No layers were updated")
-        
-        except Exception as e:
-            failed_updates += 1
-            results[webmap_id] = {"status": "error", "message": str(e)}
-            
-            with results_container:
-                st.error(f"Error processing web map {webmap_id}: {str(e)}")
-            
-            logger.error(f"Error processing web map {webmap_id} in batch update: {str(e)}")
-    
-    # Update progress to completion
-    progress_bar.progress(100)
-    
-    # Display summary
-    status.success(f"Batch update completed: {successful_updates} successful, {failed_updates} failed, {total_layers_updated} total layers updated")
-    
-    # Display debug mode notice
-    if debug_mode:
-        st.info("Running in DEBUG mode - changes were simulated and not saved to the server")
-    else:
-        st.success("Changes were verified and saved to the server")
-    
-    # Detailed summary
-    st.subheader("Batch Update Summary")
-    st.write(f"- **Web Maps Processed:** {len(webmap_ids)}")
-    st.write(f"- **Successful Updates:** {successful_updates}")
-    st.write(f"- **Failed Updates:** {failed_updates}")
-    st.write(f"- **Total Layers Updated:** {total_layers_updated}")
 
 def show_help():
     """Display help information for the Web Map Filters tool"""
