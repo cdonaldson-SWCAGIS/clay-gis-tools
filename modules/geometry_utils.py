@@ -344,7 +344,7 @@ def validate_geometry(geometry: Geometry) -> Tuple[bool, str]:
         
         # For polygons, check if they have rings
         if geometry.type.lower() == 'polygon':
-            if hasattr(geometry, 'rings') and not geometry.rings:
+            if not hasattr(geometry, 'rings') or not geometry.rings:
                 return False, "Polygon geometry has no rings"
         
         # Check spatial reference

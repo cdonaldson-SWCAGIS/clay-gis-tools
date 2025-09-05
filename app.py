@@ -1,6 +1,10 @@
 import streamlit as st
 import os
 import sys
+import logging
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Add the src directory to the Python path
 sys.path.append(os.path.abspath("src"))
@@ -15,9 +19,27 @@ st.set_page_config(
 
 # Load custom CSS
 def load_css(css_file):
-    with open(css_file, "r") as f:
-        css = f.read()
-        st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+    try:
+        # Validate file path to prevent path traversal attacks
+        if not os.path.isabs(css_file):
+            css_file = os.path.abspath(css_file)
+        
+        # Ensure the file is within the expected directory
+        if not css_file.startswith(os.path.abspath(".streamlit")):
+            logger.warning(f"CSS file path outside expected directory: {css_file}")
+            return
+        
+        with open(css_file, "r", encoding="utf-8") as f:
+            css = f.read()
+            # Basic validation to ensure it's CSS content
+            if css.strip().startswith(('<', 'script', 'javascript')):
+                logger.warning(f"Potentially unsafe content in CSS file: {css_file}")
+                return
+            st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+    except (FileNotFoundError, PermissionError, UnicodeDecodeError) as e:
+        logger.warning(f"Could not load CSS file {css_file}: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error loading CSS file {css_file}: {e}")
 
 # Apply custom CSS if file exists
 css_path = os.path.join(".streamlit", "style.css")
