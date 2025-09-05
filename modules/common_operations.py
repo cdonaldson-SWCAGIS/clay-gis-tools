@@ -501,15 +501,17 @@ def clear_session_cache(prefix: str = None) -> None:
     Args:
         prefix: Optional prefix to filter which keys to clear
     """
+    # Get keys to remove in a single pass and remove them immediately
+    # This is more efficient than collecting keys first, then removing them
     keys_to_remove = []
+    protected_keys = {"authenticated", "gis", "username", "debug_mode"}
     
-    for key in st.session_state.keys():
-        if prefix is None or key.startswith(prefix):
-            if key not in ["authenticated", "gis", "username", "debug_mode"]:
+    # Use list() to create a copy of keys to avoid modification during iteration
+    for key in list(st.session_state.keys()):
+        if key not in protected_keys:
+            if prefix is None or key.startswith(prefix):
+                del st.session_state[key]
                 keys_to_remove.append(key)
-    
-    for key in keys_to_remove:
-        del st.session_state[key]
     
     if keys_to_remove:
         logger.info(f"Cleared {len(keys_to_remove)} cached values from session state")
