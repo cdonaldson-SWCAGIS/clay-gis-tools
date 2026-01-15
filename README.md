@@ -70,8 +70,8 @@ docker run -p 8501:8501 clay-gis-tools
 ```bash
 git clone https://github.com/swca/clay-gis-tools.git
 cd clay-gis-tools
-pip install -r requirements.txt
-python app.py
+pip install -r requirements/base.txt
+streamlit run frontend/app.py
 ```
 
 ## Configuration
@@ -113,7 +113,7 @@ DEBUG_MODE=True
 
 1. Start the application:
    ```bash
-   python app.py
+   streamlit run frontend/app.py
    ```
 
 2. Open your browser to http://localhost:8501
@@ -131,10 +131,10 @@ Update definition expressions in web maps based on target fields:
 
 ```bash
 # Basic usage
-python src/patch_webmap_filters.py
+python cli/patch_filters.py
 
 # With custom parameters
-python src/patch_webmap_filters.py \
+python cli/patch_filters.py \
   --webmap_id "3d7ba61233c744b997c9e275e8475254" \
   --field "project_number" \
   --filter "project_number = '123456'" \
@@ -147,7 +147,7 @@ Update form configurations in web maps:
 
 ```bash
 # Update a field in forms
-python src/patch_webmap_forms.py update \
+python cli/patch_forms.py update \
   "3d7ba61233c744b997c9e275e8475254" \
   --field "project_number" \
   --expression "expr/set-project-number" \
@@ -155,7 +155,7 @@ python src/patch_webmap_forms.py update \
   --debug
 
 # Propagate form elements from one layer to others
-python src/patch_webmap_forms.py propagate \
+python cli/patch_forms.py propagate \
   "3d7ba61233c744b997c9e275e8475254" \
   --source "Source Layer Name" \
   --targets "Target Layer 1,Target Layer 2" \
@@ -168,8 +168,8 @@ python src/patch_webmap_forms.py propagate \
 Use the tools programmatically in your own scripts:
 
 ```python
-from src.patch_webmap_filters import update_webmap_definition_by_field
-from src.patch_webmap_forms import update_webmap_forms, propagate_form_elements
+from backend.core.webmap.filters import update_webmap_definition_by_field
+from backend.core.webmap.forms import update_webmap_forms, propagate_form_elements
 
 # Update filters
 webmap_item_id = "3d7ba61233c744b997c9e275e8475254"
@@ -202,19 +202,61 @@ updated_layers = propagate_form_elements(
 
 ```
 clay-gis-tools/
-├── app.py                 # Streamlit application entry point
-├── modules/               # Core application modules
-│   ├── authentication.py  # ArcGIS authentication
-│   ├── webmap_filters.py  # Filter update functionality
-│   ├── webmap_forms.py    # Form configuration
-│   ├── webmap_analysis.py # Analysis and reporting
-│   └── ...
-├── src/                   # Command-line utilities
-│   ├── patch_webmap_filters.py
-│   ├── patch_webmap_forms.py
-│   └── ...
+├── README.md              # Project documentation
+├── .gitignore             # Git ignore rules
+├── .env.example           # Environment variable template
+│
+├── backend/               # Core business logic (no Streamlit dependencies)
+│   ├── core/              # Core domain logic
+│   │   ├── webmap/        # Web map operations
+│   │   │   ├── filters.py      # Filter update logic
+│   │   │   ├── forms.py        # Form configuration logic
+│   │   │   ├── analysis.py    # Analysis logic
+│   │   │   ├── reports.py     # Report generation
+│   │   │   └── utils.py       # Web map utilities
+│   │   ├── clip/          # Clipping operations
+│   │   │   ├── operations.py  # Clipping logic
+│   │   │   └── geometry.py    # Geometry utilities
+│   │   └── tags.py        # Tag management logic
+│   └── utils/             # Shared utilities
+│       ├── config.py      # Configuration constants
+│       ├── exceptions.py  # Custom exceptions
+│       ├── logging.py     # Logging configuration
+│       └── auth.py        # Authentication logic
+│
+├── frontend/              # Streamlit UI components
+│   ├── app.py             # Main Streamlit application
+│   ├── pages/             # Streamlit page modules
+│   │   ├── authentication.py
+│   │   ├── webmap_filters.py
+│   │   ├── webmap_forms.py
+│   │   ├── webmap_analysis.py
+│   │   ├── clip_by_template.py
+│   │   └── settings.py
+│   └── components/        # Reusable UI components
+│       ├── item_selector.py
+│       ├── common_operations.py
+│       └── tag_selector.py
+│
+├── cli/                   # Command-line scripts
+│   ├── patch_filters.py
+│   ├── patch_forms.py
+│   └── analyze_webmap.py
+│
+├── tests/                 # Test suite
+│   ├── unit/              # Unit tests
+│   └── integration/       # Integration tests
+│
 ├── static/                # Static assets
-└── requirements.txt       # Python dependencies
+│   └── icon.svg
+│
+├── deploy/                # Deployment configurations
+│   ├── Dockerfile
+│   ├── docker-compose.yml
+│   └── fly.toml
+│
+└── requirements/          # Dependency management
+    └── base.txt           # Core dependencies
 ```
 
 ### Debug Mode
@@ -288,7 +330,7 @@ Contributions are welcome! Please follow these steps:
 
 5. Run the application:
    ```bash
-   python app.py
+   streamlit run frontend/app.py
    ```
 
 ## License
