@@ -1,7 +1,9 @@
 /* GitHub Light Theme for Streamlit */
 /* Clean, professional styling inspired by GitHub's design system */
+/* Compatible with Streamlit's structure and theming system */
 
 /* CSS Custom Properties for consistent theming */
+/* Using fallback values for better compatibility */
 :root {
   --gh-color-canvas-default: #ffffff;
   --gh-color-canvas-subtle: #f6f8fa;
@@ -23,29 +25,40 @@
 }
 
 /* Global Styles */
+/* Using data-testid for better Streamlit compatibility */
+section[data-testid="stMain"] .block-container,
 .main .block-container {
   padding-top: 2rem;
   padding-bottom: 2rem;
-  background-color: var(--gh-color-canvas-default);
+  background-color: var(--gh-color-canvas-default, #ffffff);
 }
 
 /* Remove Streamlit branding and menu */
-#MainMenu {
-  visibility: hidden;
+/* Using multiple selectors for better compatibility */
+#MainMenu,
+[data-testid="stMainMenu"] {
+  visibility: hidden !important;
 }
-footer {
-  visibility: hidden;
+
+footer,
+[data-testid="stFooter"] {
+  visibility: hidden !important;
 }
-header {
-  visibility: hidden;
+
+header,
+[data-testid="stHeader"] {
+  visibility: hidden !important;
 }
 
 /* Sidebar Styling */
+/* Using data-testid for better Streamlit compatibility */
+section[data-testid="stSidebar"] .sidebar-content,
 .sidebar .sidebar-content {
-  background-color: var(--gh-color-canvas-subtle);
-  border-right: 1px solid var(--gh-color-border-default);
+  background-color: var(--gh-color-canvas-subtle, #f6f8fa);
+  border-right: 1px solid var(--gh-color-border-default, #d0d7de);
 }
 
+section[data-testid="stSidebar"] .sidebar-content .block-container,
 .sidebar .sidebar-content .block-container {
   padding-top: 1rem;
   padding-bottom: 1rem;
@@ -58,7 +71,7 @@ h3,
 h4,
 h5,
 h6 {
-  color: var(--gh-color-fg-default);
+  color: var(--gh-color-fg-default, #24292f);
   font-weight: 600;
   line-height: 1.25;
   margin-bottom: 1rem;
@@ -66,7 +79,7 @@ h6 {
 
 h1 {
   font-size: 2rem;
-  border-bottom: 1px solid var(--gh-color-border-muted);
+  border-bottom: 1px solid var(--gh-color-border-muted, #d8dee4);
   padding-bottom: 0.5rem;
 }
 
@@ -83,28 +96,31 @@ h3 {
 p,
 div,
 span {
-  color: var(--gh-color-fg-default);
+  color: var(--gh-color-fg-default, #24292f);
 }
 
 /* Input Fields - GitHub Style */
 .stTextInput > div > div > input,
 .stTextArea > div > div > textarea,
 .stNumberInput > div > div > input {
-  background-color: var(--gh-color-canvas-default) !important;
-  color: var(--gh-color-fg-default) !important;
-  border: 1px solid var(--gh-color-border-default) !important;
-  border-radius: var(--gh-borderRadius-medium) !important;
+  background-color: var(--gh-color-canvas-default, #ffffff) !important;
+  color: var(--gh-color-fg-default, #24292f) !important;
+  border: 1px solid var(--gh-color-border-default, #d0d7de) !important;
+  border-radius: var(--gh-borderRadius-medium, 6px) !important;
   padding: 8px 12px !important;
   font-size: 14px !important;
   line-height: 1.45 !important;
   transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out !important;
-  box-shadow: var(--gh-color-shadow-small) !important;
+  box-shadow: var(
+    --gh-color-shadow-small,
+    0 1px 0 rgba(31, 35, 40, 0.04)
+  ) !important;
 }
 
 .stTextInput > div > div > input:focus,
 .stTextArea > div > div > textarea:focus,
 .stNumberInput > div > div > input:focus {
-  border-color: var(--gh-color-accent-emphasis) !important;
+  border-color: var(--gh-color-accent-emphasis, #0969da) !important;
   box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.12) !important;
   outline: none !important;
 }
@@ -112,61 +128,70 @@ span {
 .stTextInput > div > div > input:hover,
 .stTextArea > div > div > textarea:hover,
 .stNumberInput > div > div > input:hover {
-  border-color: var(--gh-color-border-default) !important;
-  background-color: var(--gh-color-canvas-subtle) !important;
+  border-color: var(--gh-color-border-default, #d0d7de) !important;
+  background-color: var(--gh-color-canvas-subtle, #f6f8fa) !important;
 }
 
 /* Placeholder text styling */
 .stTextInput > div > div > input::placeholder,
 .stTextArea > div > div > textarea::placeholder {
-  color: var(--gh-color-fg-muted) !important;
+  color: var(--gh-color-fg-muted, #656d76) !important;
   opacity: 1 !important;
 }
 
 /* Select boxes */
 .stSelectbox > div > div > div {
-  background-color: var(--gh-color-canvas-default) !important;
-  color: var(--gh-color-fg-default) !important;
-  border: 1px solid var(--gh-color-border-default) !important;
-  border-radius: var(--gh-borderRadius-medium) !important;
-  box-shadow: var(--gh-color-shadow-small) !important;
+  background-color: var(--gh-color-canvas-default, #ffffff) !important;
+  color: var(--gh-color-fg-default, #24292f) !important;
+  border: 1px solid var(--gh-color-border-default, #d0d7de) !important;
+  border-radius: var(--gh-borderRadius-medium, 6px) !important;
+  box-shadow: var(
+    --gh-color-shadow-small,
+    0 1px 0 rgba(31, 35, 40, 0.04)
+  ) !important;
 }
 
 .stSelectbox > div > div > div:hover {
-  border-color: var(--gh-color-border-default) !important;
-  background-color: var(--gh-color-canvas-subtle) !important;
+  border-color: var(--gh-color-border-default, #d0d7de) !important;
+  background-color: var(--gh-color-canvas-subtle, #f6f8fa) !important;
 }
 
 .stSelectbox > div > div > div[aria-expanded="true"] {
-  border-color: var(--gh-color-accent-emphasis) !important;
+  border-color: var(--gh-color-accent-emphasis, #0969da) !important;
   box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.12) !important;
 }
 
 /* Multiselect */
 .stMultiSelect > div > div > div {
-  background-color: var(--gh-color-canvas-default) !important;
-  border: 1px solid var(--gh-color-border-default) !important;
-  border-radius: var(--gh-borderRadius-medium) !important;
+  background-color: var(--gh-color-canvas-default, #ffffff) !important;
+  border: 1px solid var(--gh-color-border-default, #d0d7de) !important;
+  border-radius: var(--gh-borderRadius-medium, 6px) !important;
 }
 
 /* Buttons - GitHub Style */
 .stButton > button {
-  background-color: var(--gh-color-canvas-subtle) !important;
-  color: var(--gh-color-fg-default) !important;
-  border: 1px solid var(--gh-color-border-default) !important;
-  border-radius: var(--gh-borderRadius-medium) !important;
+  background-color: var(--gh-color-canvas-subtle, #f6f8fa) !important;
+  color: var(--gh-color-fg-default, #24292f) !important;
+  border: 1px solid var(--gh-color-border-default, #d0d7de) !important;
+  border-radius: var(--gh-borderRadius-medium, 6px) !important;
   padding: 6px 16px !important;
   font-size: 14px !important;
   font-weight: 500 !important;
   line-height: 1.45 !important;
   transition: all 0.2s ease-in-out !important;
-  box-shadow: var(--gh-color-shadow-small) !important;
+  box-shadow: var(
+    --gh-color-shadow-small,
+    0 1px 0 rgba(31, 35, 40, 0.04)
+  ) !important;
 }
 
 .stButton > button:hover {
   background-color: #f3f4f6 !important;
-  border-color: var(--gh-color-border-default) !important;
-  box-shadow: var(--gh-color-shadow-medium) !important;
+  border-color: var(--gh-color-border-default, #d0d7de) !important;
+  box-shadow: var(
+    --gh-color-shadow-medium,
+    0 3px 6px rgba(140, 149, 159, 0.15)
+  ) !important;
 }
 
 .stButton > button:active {
@@ -175,18 +200,25 @@ span {
 }
 
 /* Primary buttons */
-.stButton > button[kind="primary"] {
-  background-color: var(--gh-color-accent-emphasis) !important;
+/* Using class-based selector for better Streamlit compatibility */
+.stButton > button.kind-primary,
+.stButton > button[data-kind="primary"],
+button[data-baseweb="button"][kind="primary"] {
+  background-color: var(--gh-color-accent-emphasis, #0969da) !important;
   color: #ffffff !important;
-  border-color: var(--gh-color-accent-emphasis) !important;
+  border-color: var(--gh-color-accent-emphasis, #0969da) !important;
 }
 
-.stButton > button[kind="primary"]:hover {
+.stButton > button.kind-primary:hover,
+.stButton > button[data-kind="primary"]:hover,
+button[data-baseweb="button"][kind="primary"]:hover {
   background-color: #0860ca !important;
   border-color: #0860ca !important;
 }
 
-.stButton > button[kind="primary"]:active {
+.stButton > button.kind-primary:active,
+.stButton > button[data-kind="primary"]:active,
+button[data-baseweb="button"][kind="primary"]:active {
   background-color: #0757ba !important;
   border-color: #0757ba !important;
 }
@@ -194,45 +226,57 @@ span {
 /* Checkboxes and Radio buttons */
 .stCheckbox > div > div > label,
 .stRadio > div > div > label {
-  color: var(--gh-color-fg-default) !important;
+  color: var(--gh-color-fg-default, #24292f) !important;
   font-size: 14px !important;
 }
 
-.stCheckbox > div > div > div > input,
-.stRadio > div > div > div > input {
-  accent-color: var(--gh-color-accent-emphasis) !important;
+/* Using accent-color with fallback for better browser compatibility */
+.stCheckbox > div > div > div > input[type="checkbox"],
+.stRadio > div > div > div > input[type="radio"] {
+  accent-color: var(--gh-color-accent-emphasis, #0969da);
+  /* Fallback for older browsers */
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+/* Additional styling for checkbox/radio compatibility */
+.stCheckbox > div > div > div > input[type="checkbox"]:checked,
+.stRadio > div > div > div > input[type="radio"]:checked {
+  background-color: var(--gh-color-accent-emphasis, #0969da);
+  border-color: var(--gh-color-accent-emphasis, #0969da);
 }
 
 /* File uploader */
 .stFileUploader > div > div {
-  background-color: var(--gh-color-canvas-subtle) !important;
-  border: 2px dashed var(--gh-color-border-default) !important;
-  border-radius: var(--gh-borderRadius-large) !important;
-  color: var(--gh-color-fg-default) !important;
+  background-color: var(--gh-color-canvas-subtle, #f6f8fa) !important;
+  border: 2px dashed var(--gh-color-border-default, #d0d7de) !important;
+  border-radius: var(--gh-borderRadius-large, 8px) !important;
+  color: var(--gh-color-fg-default, #24292f) !important;
 }
 
 .stFileUploader > div > div:hover {
-  border-color: var(--gh-color-accent-emphasis) !important;
+  border-color: var(--gh-color-accent-emphasis, #0969da) !important;
   background-color: rgba(9, 105, 218, 0.05) !important;
 }
 
 /* Progress bars */
 .stProgress > div > div > div > div {
-  background-color: var(--gh-color-accent-emphasis) !important;
+  background-color: var(--gh-color-accent-emphasis, #0969da) !important;
   border-radius: 3px !important;
 }
 
 .stProgress > div > div > div {
-  background-color: var(--gh-color-canvas-subtle) !important;
+  background-color: var(--gh-color-canvas-subtle, #f6f8fa) !important;
   border-radius: 3px !important;
 }
 
 /* Expanders */
 .streamlit-expanderHeader {
-  color: var(--gh-color-fg-default) !important;
-  background-color: var(--gh-color-canvas-subtle) !important;
-  border: 1px solid var(--gh-color-border-default) !important;
-  border-radius: var(--gh-borderRadius-medium) !important;
+  color: var(--gh-color-fg-default, #24292f) !important;
+  background-color: var(--gh-color-canvas-subtle, #f6f8fa) !important;
+  border: 1px solid var(--gh-color-border-default, #d0d7de) !important;
+  border-radius: var(--gh-borderRadius-medium, 6px) !important;
   font-weight: 500 !important;
 }
 
@@ -241,21 +285,22 @@ span {
 }
 
 .streamlit-expanderContent {
-  border: 1px solid var(--gh-color-border-default) !important;
+  border: 1px solid var(--gh-color-border-default, #d0d7de) !important;
   border-top: none !important;
-  border-radius: 0 0 var(--gh-borderRadius-medium) var(--gh-borderRadius-medium) !important;
-  background-color: var(--gh-color-canvas-default) !important;
+  border-radius: 0 0 var(--gh-borderRadius-medium, 6px)
+    var(--gh-borderRadius-medium, 6px) !important;
+  background-color: var(--gh-color-canvas-default, #ffffff) !important;
 }
 
 /* Tabs */
 .stTabs [data-baseweb="tab-list"] {
-  gap: 0px;
-  border-bottom: 1px solid var(--gh-color-border-default);
+  gap: 0;
+  border-bottom: 1px solid var(--gh-color-border-default, #d0d7de);
 }
 
 .stTabs [data-baseweb="tab"] {
   background-color: transparent !important;
-  color: var(--gh-color-fg-muted) !important;
+  color: var(--gh-color-fg-muted, #656d76) !important;
   border: none !important;
   border-bottom: 2px solid transparent !important;
   border-radius: 0 !important;
@@ -265,54 +310,54 @@ span {
 }
 
 .stTabs [data-baseweb="tab"]:hover {
-  color: var(--gh-color-fg-default) !important;
-  background-color: var(--gh-color-canvas-subtle) !important;
+  color: var(--gh-color-fg-default, #24292f) !important;
+  background-color: var(--gh-color-canvas-subtle, #f6f8fa) !important;
 }
 
 .stTabs [data-baseweb="tab"][aria-selected="true"] {
-  color: var(--gh-color-fg-default) !important;
-  border-bottom-color: var(--gh-color-accent-emphasis) !important;
-  background-color: var(--gh-color-canvas-default) !important;
+  color: var(--gh-color-fg-default, #24292f) !important;
+  border-bottom-color: var(--gh-color-accent-emphasis, #0969da) !important;
+  background-color: var(--gh-color-canvas-default, #ffffff) !important;
 }
 
 /* Tables */
 .stTable,
 .stDataFrame {
-  border: 1px solid var(--gh-color-border-default) !important;
-  border-radius: var(--gh-borderRadius-medium) !important;
+  border: 1px solid var(--gh-color-border-default, #d0d7de) !important;
+  border-radius: var(--gh-borderRadius-medium, 6px) !important;
   overflow: hidden !important;
 }
 
 .stTable thead tr th,
 .stDataFrame thead tr th {
-  background-color: var(--gh-color-canvas-subtle) !important;
-  color: var(--gh-color-fg-default) !important;
-  border-bottom: 1px solid var(--gh-color-border-default) !important;
+  background-color: var(--gh-color-canvas-subtle, #f6f8fa) !important;
+  color: var(--gh-color-fg-default, #24292f) !important;
+  border-bottom: 1px solid var(--gh-color-border-default, #d0d7de) !important;
   padding: 8px 12px !important;
   font-weight: 600 !important;
 }
 
 .stTable tbody tr:nth-child(odd),
 .stDataFrame tbody tr:nth-child(odd) {
-  background-color: var(--gh-color-canvas-default) !important;
+  background-color: var(--gh-color-canvas-default, #ffffff) !important;
 }
 
 .stTable tbody tr:nth-child(even),
 .stDataFrame tbody tr:nth-child(even) {
-  background-color: var(--gh-color-canvas-subtle) !important;
+  background-color: var(--gh-color-canvas-subtle, #f6f8fa) !important;
 }
 
 .stTable tbody tr td,
 .stDataFrame tbody tr td {
-  color: var(--gh-color-fg-default) !important;
-  border-bottom: 1px solid var(--gh-color-border-muted) !important;
+  color: var(--gh-color-fg-default, #24292f) !important;
+  border-bottom: 1px solid var(--gh-color-border-muted, #d8dee4) !important;
   padding: 8px 12px !important;
 }
 
 /* Alerts and Messages */
 .stAlert {
-  border-radius: var(--gh-borderRadius-medium) !important;
-  border: 1px solid var(--gh-color-border-default) !important;
+  border-radius: var(--gh-borderRadius-medium, 6px) !important;
+  border: 1px solid var(--gh-color-border-default, #d0d7de) !important;
   padding: 12px 16px !important;
   margin: 8px 0 !important;
 }
@@ -320,28 +365,28 @@ span {
 /* Success alerts */
 div[data-testid="stSuccessBox"] {
   background-color: #dafbe1 !important;
-  border-left: 4px solid var(--gh-color-success-emphasis) !important;
+  border-left: 4px solid var(--gh-color-success-emphasis, #1a7f37) !important;
   color: #0f5132 !important;
 }
 
 /* Info alerts */
 div[data-testid="stInfoBox"] {
   background-color: #dbeafe !important;
-  border-left: 4px solid var(--gh-color-accent-emphasis) !important;
+  border-left: 4px solid var(--gh-color-accent-emphasis, #0969da) !important;
   color: #0c4a6e !important;
 }
 
 /* Warning alerts */
 div[data-testid="stWarningBox"] {
   background-color: #fef3c7 !important;
-  border-left: 4px solid var(--gh-color-attention-emphasis) !important;
+  border-left: 4px solid var(--gh-color-attention-emphasis, #9a6700) !important;
   color: #92400e !important;
 }
 
 /* Error alerts */
 div[data-testid="stErrorBox"] {
   background-color: #fee2e2 !important;
-  border-left: 4px solid var(--gh-color-danger-emphasis) !important;
+  border-left: 4px solid var(--gh-color-danger-emphasis, #cf222e) !important;
   color: #991b1b !important;
 }
 
@@ -357,95 +402,111 @@ code {
 }
 
 pre {
-  background-color: var(--gh-color-canvas-subtle) !important;
-  border: 1px solid var(--gh-color-border-default) !important;
-  border-radius: var(--gh-borderRadius-medium) !important;
+  background-color: var(--gh-color-canvas-subtle, #f6f8fa) !important;
+  border: 1px solid var(--gh-color-border-default, #d0d7de) !important;
+  border-radius: var(--gh-borderRadius-medium, 6px) !important;
   padding: 16px !important;
   overflow-x: auto !important;
 }
 
 pre code {
   background-color: transparent !important;
-  color: var(--gh-color-fg-default) !important;
+  color: var(--gh-color-fg-default, #24292f) !important;
   padding: 0 !important;
 }
 
 /* Metrics */
 .metric-container {
-  background-color: var(--gh-color-canvas-subtle) !important;
-  border: 1px solid var(--gh-color-border-default) !important;
-  border-radius: var(--gh-borderRadius-medium) !important;
+  background-color: var(--gh-color-canvas-subtle, #f6f8fa) !important;
+  border: 1px solid var(--gh-color-border-default, #d0d7de) !important;
+  border-radius: var(--gh-borderRadius-medium, 6px) !important;
   padding: 16px !important;
 }
 
 /* Sidebar navigation styling */
+section[data-testid="stSidebar"] .sidebar-content .stRadio > div,
 .sidebar .sidebar-content .stRadio > div {
   background-color: transparent !important;
 }
 
+section[data-testid="stSidebar"] .sidebar-content .stRadio > div > div > label,
 .sidebar .sidebar-content .stRadio > div > div > label {
   background-color: transparent !important;
   padding: 8px 12px !important;
-  border-radius: var(--gh-borderRadius-medium) !important;
+  border-radius: var(--gh-borderRadius-medium, 6px) !important;
   transition: background-color 0.2s ease-in-out !important;
 }
 
+section[data-testid="stSidebar"]
+  .sidebar-content
+  .stRadio
+  > div
+  > div
+  > label:hover,
 .sidebar .sidebar-content .stRadio > div > div > label:hover {
   background-color: rgba(9, 105, 218, 0.1) !important;
 }
 
 /* Scrollbars */
+/* Webkit scrollbar styles (Chrome, Safari, Edge) */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--gh-color-canvas-subtle);
+  background: var(--gh-color-canvas-subtle, #f6f8fa);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--gh-color-border-default);
+  background: var(--gh-color-border-default, #d0d7de);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--gh-color-fg-muted);
+  background: var(--gh-color-fg-muted, #656d76);
+}
+
+/* Firefox scrollbar styles */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--gh-color-border-default, #d0d7de)
+    var(--gh-color-canvas-subtle, #f6f8fa);
 }
 
 /* Loading spinner */
 .stSpinner > div {
-  border-top-color: var(--gh-color-accent-emphasis) !important;
+  border-top-color: var(--gh-color-accent-emphasis, #0969da) !important;
 }
 
 /* Tooltips */
 .stTooltipIcon {
-  color: var(--gh-color-accent-emphasis) !important;
+  color: var(--gh-color-accent-emphasis, #0969da) !important;
 }
 
 /* JSON viewer */
 .stJson {
-  background-color: var(--gh-color-canvas-subtle) !important;
-  border: 1px solid var(--gh-color-border-default) !important;
-  border-radius: var(--gh-borderRadius-medium) !important;
+  background-color: var(--gh-color-canvas-subtle, #f6f8fa) !important;
+  border: 1px solid var(--gh-color-border-default, #d0d7de) !important;
+  border-radius: var(--gh-borderRadius-medium, 6px) !important;
 }
 
 /* Ensure proper text contrast throughout */
 .stMarkdown,
 .stText {
-  color: var(--gh-color-fg-default) !important;
+  color: var(--gh-color-fg-default, #24292f) !important;
 }
 
 /* Caption text */
 .caption {
-  color: var(--gh-color-fg-muted) !important;
+  color: var(--gh-color-fg-muted, #656d76) !important;
   font-size: 12px !important;
 }
 
 /* Links */
 a {
-  color: var(--gh-color-accent-emphasis) !important;
+  color: var(--gh-color-accent-emphasis, #0969da) !important;
   text-decoration: none !important;
 }
 
@@ -460,10 +521,10 @@ input[type="email"],
 input[type="password"],
 textarea,
 select {
-  background-color: var(--gh-color-canvas-default) !important;
-  color: var(--gh-color-fg-default) !important;
-  border: 1px solid var(--gh-color-border-default) !important;
-  border-radius: var(--gh-borderRadius-medium) !important;
+  background-color: var(--gh-color-canvas-default, #ffffff) !important;
+  color: var(--gh-color-fg-default, #24292f) !important;
+  border: 1px solid var(--gh-color-border-default, #d0d7de) !important;
+  border-radius: var(--gh-borderRadius-medium, 6px) !important;
 }
 
 /* Focus states for accessibility */
@@ -471,6 +532,6 @@ input:focus,
 textarea:focus,
 select:focus,
 button:focus {
-  outline: 2px solid var(--gh-color-accent-emphasis) !important;
+  outline: 2px solid var(--gh-color-accent-emphasis, #0969da) !important;
   outline-offset: 2px !important;
 }

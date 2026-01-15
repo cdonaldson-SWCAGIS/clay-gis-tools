@@ -13,10 +13,13 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 
-from src.analyze_webmap import WebMapAnalyzer, analyze_webmap
-from src.analysis_reports import create_report
+from backend.core.webmap.analysis import WebMapAnalyzer, analyze_webmap
+from backend.core.webmap.reports import create_report
 
-from modules.logging_config import get_logger
+from backend.utils.logging import get_logger
+
+# Import AgGrid components
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode, JsCode
 
 # Configure logging
 logger = get_logger("webmap_analysis")
@@ -341,26 +344,104 @@ def show_layer_details_view(report_gen):
     layer_df = report_gen.generate_layer_summary_table()
     
     if not layer_df.empty:
-        # Style the dataframe
-        def style_severity(val):
-            if val > 0:
-                if "Critical" in val.name:
-                    return "background-color: #ffcccc"
-                elif "Warnings" in val.name:
-                    return "background-color: #ffffcc"
-                elif "Info" in val.name:
-                    return "background-color: #ccffcc"
-            return ""
+        # Build grid options using GridOptionsBuilder
+        gb = GridOptionsBuilder.from_dataframe(layer_df)
         
-        styled_df = layer_df.style.applymap(
-            style_severity,
-            subset=["Critical", "Warnings", "Info"]
+        # Configure default column properties (read-only)
+        gb.configure_default_column(
+            resizable=True,
+            sortable=True,
+            filter=True,
+            editable=False
         )
         
-        st.dataframe(styled_df, use_container_width=True)
+        # Configure specific columns
+        gb.configure_column("Layer", headerName="Layer", width=200)
+        gb.configure_column("Type", headerName="Type", width=100)
+        gb.configure_column("Records", headerName="Records", width=100, type=["numericColumn"])
+        gb.configure_column("Issues", headerName="Issues", width=80, type=["numericColumn"])
         
-        # Layer selection for detailed view
-        if len(layer_df) > 0:
+        # Configure severity columns with conditional styling
+        critical_style_js = JsCode("""
+        function(params) {
+            if (params.value > 0) {
+                return {backgroundColor: '#ffcccc', color: '#cc0000'};
+            }
+            return null;
+        }
+        """)
+        
+        warning_style_js = JsCode("""
+        function(params) {
+            if (params.value > 0) {
+                return {backgroundColor: '#ffffcc', color: '#cc9900'};
+            }
+            return null;
+        }
+        """)
+        
+        info_style_js = JsCode("""
+        function(params) {
+            if (params.value > 0) {
+                return {backgroundColor: '#ccffcc', color: '#009900'};
+            }
+            return null;
+        }
+        """)
+        
+        gb.configure_column(
+            "Critical",
+            headerName="Critical",
+            width=90,
+            type=["numericColumn"],
+            cellStyle=critical_style_js
+        )
+        
+        gb.configure_column(
+            "Warnings",
+            headerName="Warnings",
+            width=95,
+            type=["numericColumn"],
+            cellStyle=warning_style_js
+        )
+        
+        gb.configure_column(
+            "Info",
+            headerName="Info",
+            width=70,
+            type=["numericColumn"],
+            cellStyle=info_style_js
+        )
+        
+        # Enable row selection
+        gb.configure_selection(selection_mode="single", use_checkbox=False)
+        
+        grid_options = gb.build()
+        
+        # Display the AgGrid
+        grid_response = AgGrid(
+            layer_df,
+            gridOptions=grid_options,
+            height=400,
+            fit_columns_on_grid_load=True,
+            update_mode=GridUpdateMode.SELECTION_CHANGED,
+            data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+            theme="streamlit",
+            key="layer_analysis_grid",
+            allow_unsafe_jscode=True
+        )
+        
+        # Layer selection for detailed view - use grid selection or dropdown
+        selected_rows = grid_response.get("selected_rows", [])
+        
+        if selected_rows is not None and len(selected_rows) > 0:
+            # Use the selected row from the grid
+            selected_layer = selected_rows[0].get("Layer") if isinstance(selected_rows, list) and len(selected_rows) > 0 else None
+            if selected_layer:
+                st.info(f"Selected from grid: {selected_layer}")
+                show_layer_issues(selected_layer, report_gen.results)
+        else:
+            # Fallback to dropdown selection
             selected_layer = st.selectbox(
                 "Select a layer for detailed issues",
                 layer_df["Layer"].tolist()

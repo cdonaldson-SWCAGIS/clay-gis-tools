@@ -9,23 +9,32 @@ from typing import Optional, Dict, Any, List
 from arcgis.gis import GIS, Item
 from arcgis.features import FeatureLayer
 
-from .common_operations import (
+import sys
+from pathlib import Path
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+from frontend.components.common_operations import (
     ensure_authentication, get_gis_object, show_debug_mode_control,
     show_tool_header, execute_operation_with_status
 )
-from .item_utils import ItemSelector
-from .tag_management import (
+from frontend.components.item_selector import ItemSelector
+from frontend.components.tag_selector import (
     parse_tags, search_layers_by_tags, show_tagged_layer_selection,
     show_coordinate_system_selection, create_tag_search_help
 )
-from .geometry_utils import BufferUnits
-from .clip_operations import (
-    batch_clip_layers, show_clip_results, validate_clip_inputs,
-    create_clip_help_section, show_template_geometry_preview
+from backend.core.clip.geometry import BufferUnits
+from backend.core.clip.operations import (
+    batch_clip_layers, validate_clip_inputs
 )
+# Note: show_clip_results, create_clip_help_section, show_template_geometry_preview 
+# need to be moved to frontend or reimplemented
+
+from backend.utils.logging import get_logger
 
 # Configure logging
-logger = logging.getLogger("clip_by_template_tag")
+logger = get_logger("clip_by_template_tag")
 
 
 def show() -> None:

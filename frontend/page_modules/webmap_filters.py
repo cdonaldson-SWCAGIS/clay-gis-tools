@@ -6,24 +6,50 @@ import os
 from typing import List, Optional, Dict, Any
 
 # Import utility modules
-from modules.item_utils import ItemSelector, get_webmap_item
-from modules.common_operations import (
+import sys
+from pathlib import Path
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+from frontend.components.item_selector import ItemSelector, get_webmap_item
+from frontend.components.common_operations import (
     ensure_authentication, get_gis_object, show_debug_mode_control,
-    show_operation_parameters, validate_operation_inputs, show_validation_errors,
-    execute_operation_with_status, show_operation_results, show_batch_operation_interface,
-    create_help_section, show_tool_header
+    execute_operation_with_status, show_tool_header
 )
-from modules.webmap_utils import get_webmap_layer_details
+from backend.core.webmap.utils import get_webmap_layer_details
+
+# Import AgGrid components
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode, JsCode
 
 # Configure logging
 logger = logging.getLogger("webmap_filters")
 
-# Import the patch_webmap_filters module
-try:
-    from src import patch_webmap_filters
-except ImportError as e:
-    st.error(f"Failed to import patch_webmap_filters module: {e}")
-    sys.exit(1)
+# Import the webmap filters module
+from backend.core.webmap import filters as patch_webmap_filters
+
+
+def load_js_file(js_file_path: str) -> JsCode:
+    """
+    Load a JavaScript file and return it as a JsCode object for use with AgGrid.
+    
+    Args:
+        js_file_path: Path to the JavaScript file relative to project root
+        
+    Returns:
+        JsCode object containing the JavaScript code
+    """
+    project_root = Path(__file__).parent.parent.parent
+    full_path = project_root / js_file_path
+    
+    if not full_path.exists():
+        logger.error(f"JavaScript file not found: {full_path}")
+        raise FileNotFoundError(f"JavaScript file not found: {full_path}")
+    
+    with open(full_path, 'r', encoding='utf-8') as f:
+        js_content = f.read()
+    
+    return JsCode(js_content)
 
 def show():
     """Display the Web Map Filters interface"""
@@ -34,94 +60,15 @@ def show():
     # Show tool header
     show_tool_header(
         "Web Map Filters",
-        "This tool allows you to update definition expressions (filters) in ArcGIS web maps. "
-        "It will identify all layers containing a specific field and apply a new filter expression to them.",
+        "This tool allows you to configure definition expressions (filters) individually for each layer in your ArcGIS web maps.",
         "🔍"
     )
     
-    # Create tabs for different operations
-    tab1, tab2, tab3 = st.tabs(["Update Filters", "Per-Layer Configuration", "Batch Operations"])
-    
-    with tab1:
-        show_update_filters()
-    
-    with tab2:
-        show_per_layer_config()
-    
-    with tab3:
-        show_batch_operations()
+    # Show per-layer configuration interface
+    show_per_layer_config()
     
     # Show help information
     show_help()
-
-def show_update_filters():
-    """Display the main filter update interface"""
-    # Get GIS object
-    gis = get_gis_object()
-    if not gis:
-        return
-    
-    # Web map selection using ItemSelector
-    item_selector = ItemSelector(gis, "Web Map", "webmap_filters")
-    selected_webmap = item_selector.show(
-        title="Web Map Selection",
-        help_text="Select the web map you want to update filters for.",
-        default_id=st.session_state.get("webmap_id", "")
-    )
-    
-    # Operation parameters
-    parameters = [
-        {
-            "name": "target_field",
-            "type": "text",
-            "label": "Target Field",
-            "help": "The field name to search for in layers",
-            "default": "project_number",
-            "placeholder": "Enter field name (e.g., project_number)",
-            "required": True
-        },
-        {
-            "name": "new_filter",
-            "type": "textarea",
-            "label": "New Filter Expression",
-            "help": "The SQL expression to apply to matching layers",
-            "default": "project_number = '123456'",
-            "placeholder": "Enter SQL WHERE clause",
-            "required": True
-        }
-    ]
-    
-    param_values = show_operation_parameters("Filter Parameters", parameters)
-    
-    # Debug mode control
-    debug_mode = show_debug_mode_control("webmap_filters")
-    
-    # Validate inputs
-    required_fields = ["target_field", "new_filter"]
-    inputs = {
-        "webmap_id": selected_webmap.id if selected_webmap else None,
-        **param_values
-    }
-    
-    is_valid, errors = validate_operation_inputs(inputs, required_fields + ["webmap_id"])
-    
-    # Execute button
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        update_button = st.button("Update Web Map Filters", type="primary", use_container_width=True)
-    
-    # Handle update request
-    if update_button:
-        if not is_valid:
-            show_validation_errors(errors)
-        else:
-            # Execute the update
-            execute_filter_update_with_status(
-                inputs["webmap_id"],
-                inputs["target_field"],
-                inputs["new_filter"],
-                debug_mode
-            )
 
 def get_field_type_display_name(field_type: str) -> str:
     """
@@ -230,7 +177,7 @@ def show_per_layer_config():
     )
     
     if not selected_webmap:
-        st.info("Please select a web map to view its layers.")
+        #st.info("Please select a web map to view its layers.")
         return
     
     # Session state key for layer data
@@ -323,11 +270,21 @@ def show_per_layer_config():
     st.divider()
     
     # Define filter operators
-    filter_operators = ["=", "!=", ">", "<", ">=", "<=", "LIKE", "IN", "IS NULL", "IS NOT NULL"]
+    filter_operators = ["=", "IN", "IS NOT NULL"]
     
     # Prepare DataFrame for the data editor
+    import json
     df_data = []
     for layer in layer_details:
+        # Ensure fields is always a list (not None or other type)
+        layer_fields = layer.get("fields", [])
+        if not isinstance(layer_fields, list):
+            layer_fields = []
+        
+        # Convert fields list to JSON string to ensure proper serialization
+        # This ensures the list is preserved when AgGrid serializes the data
+        fields_json = json.dumps(layer_fields) if layer_fields else "[]"
+        
         df_data.append({
             "Apply": False,
             "Layer Name": layer["name"],
@@ -336,62 +293,125 @@ def show_per_layer_config():
             "Filter Operator": "=",
             "Filter Value": "",
             "_url": layer["url"],  # Hidden column for reference
-            "_fields": layer["fields"]  # Store available fields per layer
+            "_fields": fields_json  # Store as JSON string to ensure proper serialization
         })
     
     df = pd.DataFrame(df_data)
     
-    # Configure column settings for the data editor
-    column_config = {
-        "Apply": st.column_config.CheckboxColumn(
-            "Apply",
-            help="Check to apply filter to this layer",
-            default=False
-        ),
-        "Layer Name": st.column_config.TextColumn(
-            "Layer Name",
-            help="Name of the layer in the web map",
-            disabled=True
-        ),
-        "Path": st.column_config.TextColumn(
-            "Path",
-            help="Full path including group layers",
-            disabled=True
-        ),
-        "Target Field": st.column_config.TextColumn(
-            "Target Field",
-            help="Field name to use in the filter expression (see Layer and Field Reference above for available fields)",
-            required=True,
-            width="medium"
-        ),
-        "Filter Operator": st.column_config.SelectboxColumn(
-            "Filter Operator",
-            help="SQL operator for the filter (e.g., =, !=, >, <, LIKE, IN)",
-            options=filter_operators,
-            required=True,
-            default="="
-        ),
-        "Filter Value": st.column_config.TextColumn(
-            "Filter Value",
-            help="Value to filter by (e.g., '123456' for =, 'Active,Pending' for IN, '%ABC%' for LIKE). Leave empty for IS NULL/IS NOT NULL.",
-            width="medium"
-        ),
-        "_url": None,  # Hide this column
-        "_fields": None  # Hide this column
-    }
-    
-    # Display the data editor
+    # Configure AgGrid columns
     st.markdown("#### Configure Layers")
     st.caption("Check 'Apply' for layers you want to update, then set the target field, operator, and value for each.")
     
-    edited_df = st.data_editor(
-        df,
-        column_config=column_config,
-        use_container_width=True,
-        hide_index=True,
-        num_rows="fixed",
-        key=f"filter_layer_editor_{selected_webmap.id}"
+    # Build grid options using GridOptionsBuilder
+    gb = GridOptionsBuilder.from_dataframe(df)
+    
+    # Configure default column properties
+    gb.configure_default_column(
+        resizable=True,
+        sortable=True,
+        filter=True
     )
+    
+    # Configure individual columns
+    gb.configure_column(
+        "Apply",
+        headerName="Apply",
+        editable=True,
+        cellRenderer="agCheckboxCellRenderer",
+        cellEditor="agCheckboxCellEditor",
+        width=80,
+        headerTooltip="Check to apply filter to this layer"
+    )
+    
+    gb.configure_column(
+        "Layer Name",
+        headerName="Layer Name",
+        editable=False,
+        width=200,
+        headerTooltip="Name of the layer in the web map"
+    )
+    
+    gb.configure_column(
+        "Path",
+        headerName="Path",
+        editable=False,
+        width=150,
+        headerTooltip="Full path including group layers"
+    )
+    
+    # Load the custom cell editor JavaScript from external file
+    # This allows the JavaScript to be linted and maintained separately
+    target_field_editor_js = load_js_file("static/js/dynamic_select_cell_editor.js")
+    
+    gb.configure_column(
+        "Target Field",
+        headerName="Target Field",
+        editable=True,
+        cellEditor=target_field_editor_js,
+        width=150,
+        headerTooltip="Field name to use in the filter expression (dropdown shows fields available for this layer)"
+    )
+    
+    gb.configure_column(
+        "Filter Operator",
+        headerName="Filter Operator",
+        editable=True,
+        cellEditor="agSelectCellEditor",
+        cellEditorParams={"values": filter_operators},
+        width=130,
+        headerTooltip="SQL operator for the filter"
+    )
+    
+    gb.configure_column(
+        "Filter Value",
+        headerName="Filter Value",
+        editable=True,
+        cellEditor="agTextCellEditor",
+        width=150,
+        headerTooltip="Value to filter by. Leave empty for IS NULL/IS NOT NULL."
+    )
+    
+    # Hide internal columns and configure them to avoid AgGrid warnings
+    # These columns contain objects/arrays but are hidden
+    # Disable cell data type inference to suppress warnings about object types
+    empty_formatter = JsCode("function(params) { return ''; }")
+    
+    gb.configure_column(
+        "_url",
+        hide=True,
+        valueFormatter=empty_formatter,
+        editable=False,
+        sortable=False,
+        filter=False,
+        cellDataType=False  # Disable type inference to suppress warnings
+    )
+    gb.configure_column(
+        "_fields",
+        hide=True,
+        valueFormatter=empty_formatter,
+        editable=False,
+        sortable=False,
+        filter=False,
+        cellDataType=False  # Disable type inference to suppress warnings
+    )
+    
+    grid_options = gb.build()
+    
+    # Display the AgGrid
+    grid_response = AgGrid(
+        df,
+        gridOptions=grid_options,
+        height=400,
+        fit_columns_on_grid_load=True,
+        update_mode=GridUpdateMode.VALUE_CHANGED,
+        data_return_mode=DataReturnMode.AS_INPUT,
+        theme="streamlit",
+        key=f"filter_layer_editor_{selected_webmap.id}",
+        allow_unsafe_jscode=True
+    )
+    
+    # Get edited data from grid response
+    edited_df = grid_response["data"]
     
     # Debug mode control
     debug_mode = show_debug_mode_control("webmap_filters_perlayer")
@@ -433,7 +453,17 @@ def show_per_layer_config():
                     continue
                 
                 # Check if target field exists in this layer's fields
-                layer_fields = row["_fields"]
+                # Parse the JSON string back to a list
+                layer_fields_str = row["_fields"]
+                try:
+                    if isinstance(layer_fields_str, str):
+                        layer_fields = json.loads(layer_fields_str)
+                    else:
+                        # If it's already a list (shouldn't happen, but handle it)
+                        layer_fields = layer_fields_str if isinstance(layer_fields_str, list) else []
+                except (json.JSONDecodeError, TypeError):
+                    layer_fields = []
+                
                 if target_field not in layer_fields:
                     validation_errors.append(f"'{layer_name}': Field '{target_field}' not available in this layer")
                     continue
@@ -472,9 +502,8 @@ def execute_per_layer_filter_update(
     """Execute a per-layer filter update with status display"""
     
     def update_operation():
-        patch_webmap_filters.DEBUG_MODE = debug_mode
         return patch_webmap_filters.update_webmap_definitions_by_layer_config(
-            webmap_id, layer_configs, gis, debug_mode
+            webmap_id, layer_configs, gis, debug_mode=debug_mode
         )
     
     # Execute with status display
@@ -511,213 +540,13 @@ def execute_per_layer_filter_update(
                     st.error(f"{layer_url}: {error_msg}")
 
 
-def show_batch_operations():
-    """Display batch operations interface"""
-    # Get batch item IDs
-    webmap_ids = show_batch_operation_interface(
-        "Filter Update",
-        "web maps",
-        "Enter web map IDs, one per line"
-    )
-    
-    if webmap_ids:
-        # Operation parameters
-        parameters = [
-            {
-                "name": "target_field",
-                "type": "text",
-                "label": "Target Field",
-                "help": "The field name to search for in layers",
-                "default": "project_number",
-                "placeholder": "Enter field name (e.g., project_number)",
-                "required": True
-            },
-            {
-                "name": "new_filter",
-                "type": "textarea",
-                "label": "New Filter Expression",
-                "help": "The SQL expression to apply to matching layers",
-                "default": "project_number = '123456'",
-                "placeholder": "Enter SQL WHERE clause",
-                "required": True
-            }
-        ]
-        
-        param_values = show_operation_parameters("Batch Parameters", parameters)
-        
-        # Debug mode control
-        debug_mode = show_debug_mode_control("batch_webmap_filters")
-        
-        # Validate inputs
-        required_fields = ["target_field", "new_filter"]
-        is_valid, errors = validate_operation_inputs(param_values, required_fields)
-        
-        # Execute button
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            batch_button = st.button("Run Batch Update", type="primary", use_container_width=True)
-        
-        # Handle batch update request
-        if batch_button:
-            if not is_valid:
-                show_validation_errors(errors)
-            else:
-                # Execute batch update
-                execute_batch_filter_update_with_status(
-                    webmap_ids,
-                    param_values["target_field"],
-                    param_values["new_filter"],
-                    debug_mode
-                )
-
-
-def execute_filter_update_with_status(webmap_id: str, target_field: str, new_filter: str, debug_mode: bool) -> None:
-    """Execute a filter update with consistent status display"""
-    
-    def update_operation(webmap_id: str, target_field: str, new_filter: str) -> List[str]:
-        # Set debug mode
-        patch_webmap_filters.DEBUG_MODE = debug_mode
-        
-        # Update the web map
-        return patch_webmap_filters.update_webmap_definition_by_field(
-            webmap_id, target_field, new_filter
-        )
-    
-    # Execute with status display
-    result = execute_operation_with_status(
-        "Web Map Filter Update",
-        update_operation,
-        (webmap_id, target_field, new_filter),
-        success_message=f"Successfully updated web map filters",
-        error_message="Failed to update web map filters"
-    )
-    
-    # Show results
-    if result:
-        def format_results(layers):
-            return {
-                "Layers Updated": len(layers),
-                "Layer URLs": layers
-            }
-        
-        show_operation_results(
-            "Filter Update",
-            result,
-            success_criteria=lambda x: len(x) > 0,
-            result_formatter=format_results
-        )
-
-
-def execute_batch_filter_update_with_status(webmap_ids: List[str], target_field: str, new_filter: str, debug_mode: bool) -> None:
-    """Execute a batch filter update with consistent status display"""
-    
-    def batch_update_operation(webmap_ids: List[str], target_field: str, new_filter: str) -> Dict[str, Any]:
-        # Set debug mode
-        patch_webmap_filters.DEBUG_MODE = debug_mode
-        
-        results = {}
-        successful_updates = 0
-        failed_updates = 0
-        total_layers_updated = 0
-        
-        for i, webmap_id in enumerate(webmap_ids):
-            try:
-                # Get the web map item
-                webmap_item = patch_webmap_filters.get_webmap_item(webmap_id)
-                
-                if not webmap_item:
-                    failed_updates += 1
-                    results[webmap_id] = {"status": "error", "message": "Web map not found"}
-                    continue
-                
-                # Update the web map
-                updated_layers = patch_webmap_filters.update_webmap_definition_by_field(
-                    webmap_id, target_field, new_filter
-                )
-                
-                # Record results
-                if updated_layers:
-                    successful_updates += 1
-                    total_layers_updated += len(updated_layers)
-                    results[webmap_id] = {
-                        "status": "success",
-                        "title": webmap_item.title,
-                        "layers_updated": len(updated_layers),
-                        "layer_urls": updated_layers
-                    }
-                else:
-                    failed_updates += 1
-                    results[webmap_id] = {
-                        "status": "warning",
-                        "title": webmap_item.title,
-                        "message": "No layers were updated"
-                    }
-            
-            except Exception as e:
-                failed_updates += 1
-                results[webmap_id] = {"status": "error", "message": str(e)}
-                logger.error(f"Error processing web map {webmap_id} in batch update: {str(e)}")
-        
-        return {
-            "results": results,
-            "successful_updates": successful_updates,
-            "failed_updates": failed_updates,
-            "total_layers_updated": total_layers_updated,
-            "total_webmaps": len(webmap_ids)
-        }
-    
-    # Execute with status display
-    result = execute_operation_with_status(
-        "Batch Web Map Filter Update",
-        batch_update_operation,
-        (webmap_ids, target_field, new_filter),
-        success_message=f"Batch update completed",
-        error_message="Batch update failed"
-    )
-    
-    # Show results
-    if result:
-        def format_batch_results(batch_result):
-            return {
-                "Web Maps Processed": batch_result["total_webmaps"],
-                "Successful Updates": batch_result["successful_updates"],
-                "Failed Updates": batch_result["failed_updates"],
-                "Total Layers Updated": batch_result["total_layers_updated"]
-            }
-        
-        show_operation_results(
-            "Batch Filter Update",
-            result,
-            success_criteria=lambda x: x["successful_updates"] > 0,
-            result_formatter=format_batch_results
-        )
-        
-        # Show detailed results
-        if result["results"]:
-            with st.expander("Detailed Results", expanded=False):
-                for webmap_id, webmap_result in result["results"].items():
-                    status = webmap_result["status"]
-                    if status == "success":
-                        st.success(f"**{webmap_result['title']}** ({webmap_id}): Updated {webmap_result['layers_updated']} layers")
-                    elif status == "warning":
-                        st.warning(f"**{webmap_result.get('title', 'Unknown')}** ({webmap_id}): {webmap_result['message']}")
-                    else:
-                        st.error(f"**Web Map** ({webmap_id}): {webmap_result['message']}")
-
-
 def show_help():
     """Display help information for the Web Map Filters tool"""
     with st.expander("Need Help?"):
         st.markdown("""
         ### Web Map Filters Help
         
-        #### Update Filters Tab
-        Applies the same filter to all layers containing a specified field.
-        
-        - **Target Field**: The field name to search for in layers
-        - **Filter Expression**: SQL WHERE clause to apply
-        
-        #### Per-Layer Configuration Tab
+        #### Per-Layer Configuration
         Configure filters individually for each layer in your web map.
         
         1. Select a web map and click "Load Layers"
@@ -746,7 +575,7 @@ def show_help():
         
         #### Troubleshooting
         - Ensure your web map ID is correct
-        - Verify that the target field exists in at least one layer
+        - Verify that the target field exists in the layer you're trying to update
         - Check that your filter expression uses valid SQL syntax
         - Try running in Debug Mode to see more details
         """)

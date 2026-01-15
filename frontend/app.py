@@ -1,6 +1,13 @@
 import streamlit as st
 import os
+import sys
+from pathlib import Path
 from dotenv import load_dotenv
+
+# Add project root to path for imports (must be done first)
+project_root = Path(__file__).parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 # Load environment variables from .env file
 load_dotenv()
@@ -8,7 +15,7 @@ load_dotenv()
 # App configuration
 st.set_page_config(
     page_title="Clay AGOL Tools",
-    page_icon="../static/icon.svg",
+    page_icon=str(project_root / "static" / "icon.svg"),
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -20,12 +27,12 @@ def load_css(css_file):
         st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
 # Apply custom CSS if file exists
-css_path = os.path.join(".streamlit", "style.css")
+css_path = os.path.join(project_root, ".streamlit", "style.css")
 if os.path.exists(css_path):
     load_css(css_path)
 
 # Import pages
-from frontend.pages import authentication, webmap_filters, webmap_forms, webmap_analysis, settings
+from frontend.page_modules import authentication, webmap_filters, webmap_forms, webmap_analysis, settings
 from backend.utils.logging import configure_logging
 
 # Configure logging once at startup
@@ -73,7 +80,7 @@ elif page == "Web Map Forms":
 elif page == "Web Map Analysis":
     webmap_analysis.show()
 elif page == "Clip by Template Tag":
-    from frontend.pages.clip_by_template import show
+    from frontend.page_modules.clip_by_template import show
     show()
 elif page == "Settings":
     settings.show()

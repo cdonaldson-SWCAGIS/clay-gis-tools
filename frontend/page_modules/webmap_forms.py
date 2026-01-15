@@ -6,24 +6,30 @@ import os
 from typing import List, Optional, Dict, Any
 
 # Import utility modules
-from modules.item_utils import ItemSelector, get_webmap_item
-from modules.common_operations import (
+import sys
+from pathlib import Path
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+from frontend.components.item_selector import ItemSelector, get_webmap_item
+from frontend.components.common_operations import (
     ensure_authentication, get_gis_object, show_debug_mode_control,
     show_operation_parameters, validate_operation_inputs, show_validation_errors,
     execute_operation_with_status, show_operation_results, show_batch_operation_interface,
     create_help_section, show_tool_header
 )
-from modules.webmap_utils import get_webmap_layer_details, get_all_unique_fields
+from backend.core.webmap.utils import get_webmap_layer_details, get_all_unique_fields
+
+# Import AgGrid components
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
 # Configure logging
 logger = logging.getLogger("webmap_forms")
 
-# Import the patch_webmap_forms module
-try:
-    from src import patch_webmap_forms
-except ImportError as e:
-    st.error(f"Failed to import patch_webmap_forms module: {e}")
-    sys.exit(1)
+# Import the webmap forms module
+from backend.core.webmap import forms as patch_webmap_forms
+from backend.core.webmap.utils import get_webmap_item
 
 def show():
     """Display the Web Map Forms interface"""
@@ -250,69 +256,125 @@ def show_per_layer_config():
     
     df = pd.DataFrame(df_data)
     
-    # Configure column settings for the data editor
-    column_config = {
-        "Apply": st.column_config.CheckboxColumn(
-            "Apply",
-            help="Check to apply form configuration to this layer",
-            default=False
-        ),
-        "Layer Name": st.column_config.TextColumn(
-            "Layer Name",
-            help="Name of the layer in the web map",
-            disabled=True
-        ),
-        "Has Form": st.column_config.CheckboxColumn(
-            "Has Form",
-            help="Whether the layer has existing form configuration",
-            disabled=True
-        ),
-        "Field Name": st.column_config.SelectboxColumn(
-            "Field Name",
-            help="Field to configure in the form",
-            options=all_fields,
-            required=True
-        ),
-        "Expression Name": st.column_config.TextColumn(
-            "Expression Name",
-            help="Name of the expression (e.g., expr/set-project-number)",
-            width="medium"
-        ),
-        "Expression Value": st.column_config.TextColumn(
-            "Expression Value",
-            help="Value for the expression (leave blank for auto-generated)",
-            width="medium"
-        ),
-        "Group Name": st.column_config.TextColumn(
-            "Group Name",
-            help="Form group to place the field in",
-            width="small"
-        ),
-        "Label": st.column_config.TextColumn(
-            "Label",
-            help="Display label for the field (auto-generated if blank)",
-            width="small"
-        ),
-        "Editable": st.column_config.CheckboxColumn(
-            "Editable",
-            help="Whether the field should be editable by users"
-        ),
-        "_url": None,
-        "_fields": None
-    }
-    
-    # Display the data editor
+    # Configure AgGrid columns
     st.markdown("#### Configure Layers")
     st.caption("Check 'Apply' for layers you want to update, then configure the form settings for each.")
     
-    edited_df = st.data_editor(
-        df,
-        column_config=column_config,
-        use_container_width=True,
-        hide_index=True,
-        num_rows="fixed",
-        key=f"form_layer_editor_{selected_webmap.id}"
+    # Build grid options using GridOptionsBuilder
+    gb = GridOptionsBuilder.from_dataframe(df)
+    
+    # Configure default column properties
+    gb.configure_default_column(
+        resizable=True,
+        sortable=True,
+        filter=True
     )
+    
+    # Configure individual columns
+    gb.configure_column(
+        "Apply",
+        headerName="Apply",
+        editable=True,
+        cellRenderer="agCheckboxCellRenderer",
+        cellEditor="agCheckboxCellEditor",
+        width=70,
+        headerTooltip="Check to apply form configuration to this layer"
+    )
+    
+    gb.configure_column(
+        "Layer Name",
+        headerName="Layer Name",
+        editable=False,
+        width=180,
+        headerTooltip="Name of the layer in the web map"
+    )
+    
+    gb.configure_column(
+        "Has Form",
+        headerName="Has Form",
+        editable=False,
+        cellRenderer="agCheckboxCellRenderer",
+        width=90,
+        headerTooltip="Whether the layer has existing form configuration"
+    )
+    
+    gb.configure_column(
+        "Field Name",
+        headerName="Field Name",
+        editable=True,
+        cellEditor="agSelectCellEditor",
+        cellEditorParams={"values": all_fields if all_fields else [""]},
+        width=140,
+        headerTooltip="Field to configure in the form"
+    )
+    
+    gb.configure_column(
+        "Expression Name",
+        headerName="Expression Name",
+        editable=True,
+        cellEditor="agTextCellEditor",
+        width=170,
+        headerTooltip="Name of the expression (e.g., expr/set-project-number)"
+    )
+    
+    gb.configure_column(
+        "Expression Value",
+        headerName="Expression Value",
+        editable=True,
+        cellEditor="agTextCellEditor",
+        width=140,
+        headerTooltip="Value for the expression (leave blank for auto-generated)"
+    )
+    
+    gb.configure_column(
+        "Group Name",
+        headerName="Group Name",
+        editable=True,
+        cellEditor="agTextCellEditor",
+        width=110,
+        headerTooltip="Form group to place the field in"
+    )
+    
+    gb.configure_column(
+        "Label",
+        headerName="Label",
+        editable=True,
+        cellEditor="agTextCellEditor",
+        width=100,
+        headerTooltip="Display label for the field (auto-generated if blank)"
+    )
+    
+    gb.configure_column(
+        "Editable",
+        headerName="Editable",
+        editable=True,
+        cellRenderer="agCheckboxCellRenderer",
+        cellEditor="agCheckboxCellEditor",
+        width=80,
+        headerTooltip="Whether the field should be editable by users"
+    )
+    
+    # Hide internal columns
+    gb.configure_column("_url", hide=True)
+    gb.configure_column("_fields", hide=True)
+    
+    grid_options = gb.build()
+    
+    # Display the AgGrid
+    grid_response = AgGrid(
+        df,
+        gridOptions=grid_options,
+        height=400,
+        fit_columns_on_grid_load=True,
+        update_mode=GridUpdateMode.VALUE_CHANGED,
+        data_return_mode=DataReturnMode.AS_INPUT,
+        theme="streamlit",
+        key=f"form_layer_editor_{selected_webmap.id}",
+        allow_unsafe_jscode=True
+    )
+    
+    # Get edited data from grid response
+    edited_df = grid_response["data"]
     
     # Debug mode control
     debug_mode = show_debug_mode_control("webmap_forms_perlayer")
@@ -395,9 +457,8 @@ def execute_per_layer_form_update(
     """Execute a per-layer form update with status display"""
     
     def update_operation():
-        patch_webmap_forms.DEBUG_MODE = debug_mode
         return patch_webmap_forms.update_webmap_forms_by_layer_config(
-            webmap_id, layer_configs, gis, debug_mode
+            webmap_id, layer_configs, gis, debug_mode=debug_mode
         )
     
     # Execute with status display
@@ -549,12 +610,9 @@ def execute_form_update_with_status(
     def update_operation(webmap_id: str, field_name: str, expression_name: str, 
                         expression_value: Optional[str], group_name: str, 
                         field_label: Optional[str], editable: bool) -> List[str]:
-        # Set debug mode
-        patch_webmap_forms.DEBUG_MODE = debug_mode
-        
         # Update the web map forms
         return patch_webmap_forms.update_webmap_forms(
-            webmap_id, field_name, expression_name, expression_value,
+            webmap_id, get_gis_object(), field_name, expression_name, expression_value,
             group_name, field_label, editable
         )
     
@@ -600,7 +658,7 @@ def execute_batch_form_update_with_status(
                               expression_value: Optional[str], group_name: str,
                               field_label: Optional[str], editable: bool) -> Dict[str, Any]:
         # Set debug mode
-        patch_webmap_forms.DEBUG_MODE = debug_mode
+        # Debug mode is now passed as a parameter to the function
         
         results = {}
         successful_updates = 0
@@ -610,7 +668,7 @@ def execute_batch_form_update_with_status(
         for i, webmap_id in enumerate(webmap_ids):
             try:
                 # Get the web map item
-                webmap_item = patch_webmap_forms.get_webmap_item(webmap_id)
+                webmap_item = get_webmap_item(webmap_id, get_gis_object())
                 
                 if not webmap_item:
                     failed_updates += 1
@@ -619,7 +677,7 @@ def execute_batch_form_update_with_status(
                 
                 # Update the web map forms
                 updated_layers = patch_webmap_forms.update_webmap_forms(
-                    webmap_id, field_name, expression_name, expression_value,
+                    webmap_id, get_gis_object(), field_name, expression_name, expression_value,
                     group_name, field_label, editable
                 )
                 
@@ -728,14 +786,12 @@ def execute_form_update(
     
     try:
         # Set debug mode
-        patch_webmap_forms.DEBUG_MODE = debug_mode
-        
         # Update progress
         progress_bar.progress(25)
         status.info("Retrieving web map...")
         
         # Get the web map item
-        webmap_item = patch_webmap_forms.get_webmap_item(webmap_id)
+        webmap_item = get_webmap_item(webmap_id, get_gis_object())
         
         if not webmap_item:
             status.error(f"Web map with ID {webmap_id} was not found")
@@ -749,6 +805,7 @@ def execute_form_update(
         # Update the web map forms
         updated_layers = patch_webmap_forms.update_webmap_forms(
             webmap_id,
+            get_gis_object(),
             field_name,
             expression_name,
             expression_value,
@@ -818,14 +875,12 @@ def execute_form_propagation(
     
     try:
         # Set debug mode
-        patch_webmap_forms.DEBUG_MODE = debug_mode
-        
         # Update progress
         progress_bar.progress(25)
         status.info("Retrieving web map...")
         
         # Get the web map item
-        webmap_item = patch_webmap_forms.get_webmap_item(webmap_id)
+        webmap_item = get_webmap_item(webmap_id, get_gis_object())
         
         if not webmap_item:
             status.error(f"Web map with ID {webmap_id} was not found")
@@ -840,6 +895,7 @@ def execute_form_propagation(
         updated_layers = patch_webmap_forms.propagate_form_elements(
             webmap_id,
             source_layer,
+            get_gis_object(),
             target_layers,
             field_names
         )

@@ -2,6 +2,7 @@ arcgis>=2.4.1
 arcgis-mapping>=4.33.0
 requests>=2.31.0
 streamlit>=1.30.0
+streamlit-aggrid>=1.2.1
 rich>=13.0.0
 pandas>=2.0.0
 plotly>=5.0.0
