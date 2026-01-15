@@ -1,10 +1,10 @@
 """
-Authentication UI for Streamlit.
+Authentication splash screen for Streamlit.
 """
 
 import streamlit as st
 import os
-import logging
+from pathlib import Path
 
 from backend.utils.auth import get_gis_object, authenticate_from_env
 from backend.utils.logging import get_logger
@@ -12,124 +12,73 @@ from backend.utils.logging import get_logger
 logger = get_logger("authentication")
 
 
-def show():
-    """Display the authentication interface for Streamlit."""
-    st.title("Authentication")
-    
-    st.markdown("""
-    ## ArcGIS Online/Portal Authentication
-    
-    Connect to ArcGIS Online or Portal to access and modify web maps and layers.
-    You can use environment variables or enter your credentials directly.
-    """)
-    
-    auth_method = st.radio(
-        "Authentication Method",
-        ["Environment Variables", "Manual Entry"],
-        index=1  # Set default to "Manual Entry"
-    )
-    
-    username_input = ""
-    password_input = ""
-    profile_input = ""
+def _attempt_env_auth() -> bool:
+    """
+    Attempt authentication using environment variables.
+    Returns True if successful, False otherwise.
+    """
+    try:
+        gis = authenticate_from_env()
+        st.session_state.gis = gis
+        st.session_state.authenticated = True
+        st.session_state.username = gis.properties.user.username
+        logger.info(f"User {gis.properties.user.username} authenticated via environment variables")
+        return True
+    except Exception as e:
+        logger.debug(f"Environment authentication not available: {str(e)}")
+        return False
 
-    if auth_method == "Environment Variables":
-        username_input = os.environ.get("ARCGIS_USERNAME", "")
-        password_input = os.environ.get("ARCGIS_PASSWORD", "")
-        profile_input = os.environ.get("ARCGIS_PROFILE", "")
-        
-        st.info("Using credentials from environment variables")
-        
-        env_status = {
-            "ARCGIS_USERNAME": "✅ Set" if username_input else "❌ Not set",
-            "ARCGIS_PASSWORD": "✅ Set" if password_input else "❌ Not set",
-            "ARCGIS_PROFILE": "✅ Set" if profile_input else "❌ Not set (optional)"
-        }
-        
-        st.write("Environment Variable Status:")
-        for var, status in env_status.items():
-            st.write(f"- {var}: {status}")
-            
-        if not username_input or not password_input:
-            st.warning("Required environment variables not set. Please set ARCGIS_USERNAME and ARCGIS_PASSWORD, or use Manual Entry.")
-    else:
-        username_input = st.text_input("Username", value=st.session_state.get("username_manual", ""))
-        password_input = st.text_input("Password", type="password", value=st.session_state.get("password_manual", ""))
-        profile_input = st.text_input("Profile (optional)", value=st.session_state.get("profile_manual", ""))
-        
-        st.session_state.username_manual = username_input
-        st.session_state.password_manual = password_input
-        st.session_state.profile_manual = profile_input
+
+def _show_login_form():
+    """Display minimal login form for manual authentication."""
+    username = st.text_input("Username", key="auth_username")
+    password = st.text_input("Password", type="password", key="auth_password")
     
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        connect_button = st.button("Connect", type="primary", use_container_width=True)
-    
-    if connect_button:
-        if not username_input or not password_input:
+    if st.button("Connect", type="primary", use_container_width=True):
+        if not username or not password:
             st.error("Username and password are required")
         else:
-            with st.spinner("Connecting to ArcGIS Online/Portal..."):
+            with st.spinner("Connecting..."):
                 try:
-                    gis = get_gis_object(username_input, password_input, profile_input)
-                    
+                    gis = get_gis_object(username, password)
                     st.session_state.gis = gis
                     st.session_state.authenticated = True
                     st.session_state.username = gis.properties.user.username
-                    
-                    st.success(f"Connected as {gis.properties.user.username}")
-                    
-                    st.subheader("User Information")
-                    user_info = {
-                        "Username": gis.properties.user.username,
-                        "Full Name": f"{gis.properties.user.firstName} {gis.properties.user.lastName}",
-                        "Email": gis.properties.user.email,
-                        "Role": gis.properties.user.role
-                    }
-                    
-                    for key, value in user_info.items():
-                        st.write(f"**{key}:** {value}")
-                    
-                    logger.info(f"User {gis.properties.user.username} authenticated successfully via UI")
-                    
-                    st.info("You can now use the navigation sidebar to access the tools.")
-                    
+                    logger.info(f"User {gis.properties.user.username} authenticated via login form")
+                    st.rerun()
                 except Exception as e:
-                    st.error(f"Authentication failed: {str(e)}")
-                    logger.error(f"Authentication failed for user {username_input}: {str(e)}")
+                    st.error("Authentication failed. Please check your credentials.")
+                    logger.error(f"Authentication failed for user {username}: {str(e)}")
+
+
+def show():
+    """Display the authentication splash screen."""
+    # Get project root for logo path
+    project_root = Path(__file__).parent.parent.parent
+    logo_path = project_root / "static" / "icon.svg"
     
-    if st.session_state.authenticated and not connect_button:
-        st.success(f"Already connected as {st.session_state.username}")
-        
-        if st.button("Logout"):
-            st.session_state.authenticated = False
-            st.session_state.gis = None
-            st.session_state.username = None
-            st.rerun()
+    # Center the content with columns
+    col1, col2, col3 = st.columns([1, 2, 1])
     
-    with st.expander("Need Help?"):
-        st.markdown("""
-        ### Authentication Help
+    with col2:
+        # Add vertical spacing
+        st.markdown("<br><br><br>", unsafe_allow_html=True)
         
-        #### Environment Variables
-        You can set the following environment variables to avoid entering credentials each time:
+        # Show logo if available
+        if logo_path.exists():
+            st.image(str(logo_path), width=80)
         
-        ```
-        ARCGIS_USERNAME=your_username
-        ARCGIS_PASSWORD=your_password
-        ARCGIS_PROFILE=your_profile (optional)
-        ```
+        st.markdown("### Clay AGOL Tools")
+        st.markdown("<br>", unsafe_allow_html=True)
         
-        #### Profiles
-        The profile parameter is optional and refers to the ArcGIS API for Python profile name.
-        Common profiles include:
+        # Check if we should attempt env auth (first load only)
+        if not st.session_state.get("_env_auth_attempted", False):
+            st.session_state._env_auth_attempted = True
+            
+            with st.spinner("Connecting..."):
+                if _attempt_env_auth():
+                    st.rerun()
         
-        - `FDC_Admin` - For SWCA's Field Data Collection administration
-        - Leave blank for default ArcGIS Online access
-        
-        #### Troubleshooting
-        - Ensure your username and password are correct
-        - Check your internet connection
-        - Verify that you have the necessary permissions
-        - Contact your GIS administrator if problems persist
-        """)
+        # If still not authenticated, show login form
+        if not st.session_state.get("authenticated", False):
+            _show_login_form()

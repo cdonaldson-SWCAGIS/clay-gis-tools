@@ -21,7 +21,7 @@ A Python-based web application and utility suite for automating GIS workflows in
 - **Web Map Filter Updates**: Programmatically update definition expressions (filters) across multiple layers in web maps
 - **Web Map Form Configuration**: Update form elements and propagate configurations between layers
 - **Web Map Analysis**: Analyze web map structure and generate detailed reports
-- **Clip by Template Tag**: Automated clipping operations based on template tags
+- **Save as New Web Map**: Duplicate existing web maps with configurable title suffixes
 - **Recursive Layer Processing**: Handle complex web map structures including nested group layers
 - **Batch Processing**: Process multiple web maps with the same configuration
 - **Web Application Interface**: User-friendly Streamlit interface for non-technical users
@@ -31,10 +31,9 @@ A Python-based web application and utility suite for automating GIS workflows in
 
 - **Authentication**: Connect to ArcGIS Online/Portal
 - **Web Map Filters**: Update definition expressions in web maps
-- **Web Map Forms**: Configure form elements in web maps
+- **Web Map Forms**: Configure form elements in web maps and save web maps as new
 - **Web Map Analysis**: Analyze and report on web map structures
-- **Clip by Template Tag**: Perform clipping operations
-- **Settings**: Configure application settings and debug mode
+- **Settings**: Configure application settings, debug mode, and map suffix
 
 ## Installation
 
@@ -84,16 +83,16 @@ Set the following environment variables for authentication:
 ```powershell
 $env:ARCGIS_USERNAME="your_username"
 $env:ARCGIS_PASSWORD="your_password"
-$env:ARCGIS_PROFILE="your_profile"
 $env:DEBUG_MODE="True"  # Optional: Enable debug mode by default
+$env:MAP_SUFFIX="_Copy"  # Optional: Suffix for copied web maps (default: "_Copy")
 ```
 
 **macOS/Linux:**
 ```bash
 export ARCGIS_USERNAME=your_username
 export ARCGIS_PASSWORD=your_password
-export ARCGIS_PROFILE=your_profile
 export DEBUG_MODE=True  # Optional: Enable debug mode by default
+export MAP_SUFFIX="_Copy"  # Optional: Suffix for copied web maps (default: "_Copy")
 ```
 
 **Using .env file:**
@@ -101,11 +100,22 @@ Create a `.env` file in the project root:
 ```
 ARCGIS_USERNAME=your_username
 ARCGIS_PASSWORD=your_password
-ARCGIS_PROFILE=your_profile
 DEBUG_MODE=True
+MAP_SUFFIX=_Copy  # Optional: Suffix for copied web maps (default: "_Copy")
 ```
 
-> **Note**: Credentials can also be entered directly in the web application interface. The application will attempt automatic authentication from environment variables on startup.
+> **Note**: The application will automatically authenticate using environment variables on startup. If credentials are not available, a login form will be displayed.
+
+### Environment Variable Reference
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `ARCGIS_USERNAME` | Yes | - | ArcGIS Online/Portal username |
+| `ARCGIS_PASSWORD` | Yes | - | ArcGIS Online/Portal password |
+| `DEBUG_MODE` | No | `True` | Enable debug mode (simulate operations) |
+| `MAP_SUFFIX` | No | `"_Copy"` | Suffix appended to copied web map titles when using "Save as New" feature |
+
+**Note**: The `MAP_SUFFIX` can also be configured in the Settings page of the web application.
 
 ## Usage
 
@@ -231,7 +241,6 @@ clay-gis-tools/
 │   │   ├── webmap_filters.py
 │   │   ├── webmap_forms.py
 │   │   ├── webmap_analysis.py
-│   │   ├── clip_by_template.py
 │   │   └── settings.py
 │   └── components/        # Reusable UI components
 │       ├── item_selector.py

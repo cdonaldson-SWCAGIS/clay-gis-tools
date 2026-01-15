@@ -58,7 +58,7 @@ def main():
         gis = authenticate_from_env()
     except (ValueError, AuthenticationError) as e:
         logger.error(f"Authentication failed: {e}")
-        logger.error("Please set ARCGIS_USERNAME, ARCGIS_PASSWORD, and optionally ARCGIS_PROFILE environment variables")
+        logger.error("Please set ARCGIS_USERNAME and ARCGIS_PASSWORD environment variables")
         sys.exit(1)
     
     # Perform update

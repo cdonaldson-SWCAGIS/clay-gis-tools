@@ -17,9 +17,23 @@ from frontend.components.common_operations import (
     ensure_authentication, get_gis_object, show_debug_mode_control,
     show_operation_parameters, validate_operation_inputs, show_validation_errors,
     execute_operation_with_status, show_operation_results, show_batch_operation_interface,
-    create_help_section, show_tool_header
+    create_help_section, show_tool_header, get_environment_setting
 )
-from backend.core.webmap.utils import get_webmap_layer_details, get_all_unique_fields
+from backend.core.webmap.utils import (
+    get_webmap_layer_details, 
+    get_all_unique_fields, 
+    get_webmap_item
+)
+
+# Import copy_webmap_as_new with fallback
+try:
+    from backend.core.webmap.utils import copy_webmap_as_new
+except ImportError:
+    # Fallback: import directly if module cache issue
+    import importlib
+    import backend.core.webmap.utils as webmap_utils
+    importlib.reload(webmap_utils)
+    copy_webmap_as_new = webmap_utils.copy_webmap_as_new
 
 # Import AgGrid components
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
@@ -29,7 +43,6 @@ logger = logging.getLogger("webmap_forms")
 
 # Import the webmap forms module
 from backend.core.webmap import forms as patch_webmap_forms
-from backend.core.webmap.utils import get_webmap_item
 
 def show():
     """Display the Web Map Forms interface"""
@@ -42,7 +55,7 @@ def show():
         "Web Map Forms",
         "This tool allows you to update form configurations in ArcGIS web maps. "
         "It will identify all layers containing a specific field and apply form configuration changes to them.",
-        "📝"
+        ""
     )
     
     # Create tabs for different operations
@@ -143,27 +156,67 @@ def show_update_forms():
     
     is_valid, errors = validate_operation_inputs(inputs, required_fields + ["webmap_id"])
     
+    # Operation mode selection (at the end, before execution)
+    st.markdown("---")
+    operation_mode = st.radio(
+        "Apply Changes To",
+        ["Update Webmap Layer(s)", "Save as New Webmap"],
+        horizontal=True,
+        help="Choose whether to update the existing webmap or create a new copy with these changes",
+        key="update_forms_mode"
+    )
+    
+    # If "Save as New Webmap", show title input
+    new_title = None
+    if operation_mode == "Save as New Webmap":
+        map_suffix = get_environment_setting("MAP_SUFFIX", "_Copy")
+        default_title = f"{selected_webmap.title}{map_suffix}" if selected_webmap else ""
+        new_title = st.text_input(
+            "New Web Map Title",
+            value=default_title,
+            help=f"Default: <Original Title>{map_suffix}. You can customize this title.",
+            key="update_forms_new_title"
+        )
+        if not new_title:
+            new_title = default_title
+        if selected_webmap:
+            st.info(f"**Preview:** The new web map will be titled: **{new_title}**")
+    
     # Execute button
     col1, col2 = st.columns([1, 3])
     with col1:
-        update_button = st.button("Update Web Map Forms", type="primary", use_container_width=True)
+        button_text = "Save as New Web Map" if operation_mode == "Save as New Webmap" else "Update Web Map Forms"
+        update_button = st.button(button_text, type="primary", use_container_width=True)
     
     # Handle update request
     if update_button:
         if not is_valid:
             show_validation_errors(errors)
         else:
-            # Execute the update
-            execute_form_update_with_status(
-                inputs["webmap_id"],
-                inputs["field_name"],
-                inputs["expression_name"],
-                inputs["expression_value"] or None,
-                inputs["group_name"],
-                inputs["field_label"] or None,
-                inputs["editable"],
-                debug_mode
-            )
+            # Execute the update or save as new
+            if operation_mode == "Save as New Webmap":
+                execute_form_update_as_new_with_status(
+                    inputs["webmap_id"],
+                    inputs["field_name"],
+                    inputs["expression_name"],
+                    inputs["expression_value"] or None,
+                    inputs["group_name"],
+                    inputs["field_label"] or None,
+                    inputs["editable"],
+                    new_title,
+                    debug_mode
+                )
+            else:
+                execute_form_update_with_status(
+                    inputs["webmap_id"],
+                    inputs["field_name"],
+                    inputs["expression_name"],
+                    inputs["expression_value"] or None,
+                    inputs["group_name"],
+                    inputs["field_label"] or None,
+                    inputs["editable"],
+                    debug_mode
+                )
 
 def show_per_layer_config():
     """Display per-layer form configuration interface with table editor"""
@@ -383,11 +436,37 @@ def show_per_layer_config():
     selected_count = edited_df["Apply"].sum()
     st.markdown(f"**Selected layers:** {selected_count}")
     
+    # Operation mode selection (at the end, before execution)
+    st.markdown("---")
+    operation_mode = st.radio(
+        "Apply Changes To",
+        ["Update Webmap Layer(s)", "Save as New Webmap"],
+        horizontal=True,
+        help="Choose whether to update the existing webmap or create a new copy with these changes",
+        key="per_layer_config_mode"
+    )
+    
+    # If "Save as New Webmap", show title input
+    new_title = None
+    if operation_mode == "Save as New Webmap":
+        map_suffix = get_environment_setting("MAP_SUFFIX", "_Copy")
+        default_title = f"{selected_webmap.title}{map_suffix}"
+        new_title = st.text_input(
+            "New Web Map Title",
+            value=default_title,
+            help=f"Default: <Original Title>{map_suffix}. You can customize this title.",
+            key="per_layer_config_new_title"
+        )
+        if not new_title:
+            new_title = default_title
+        st.info(f"**Preview:** The new web map will be titled: **{new_title}**")
+    
     # Execute button
     col1, col2 = st.columns([1, 3])
     with col1:
+        button_text = "Save as New Web Map" if operation_mode == "Save as New Webmap" else "Update Selected Layers"
         update_button = st.button(
-            "Update Selected Layers",
+            button_text,
             type="primary",
             use_container_width=True,
             disabled=selected_count == 0,
@@ -439,13 +518,123 @@ def show_per_layer_config():
             for error in validation_errors:
                 st.warning(f"- {error}")
         elif layer_configs:
-            # Execute the per-layer update
-            execute_per_layer_form_update(
-                selected_webmap.id,
-                layer_configs,
-                gis,
-                debug_mode
-            )
+            # Execute the per-layer update or save as new
+            if operation_mode == "Save as New Webmap":
+                execute_per_layer_form_update_as_new(
+                    selected_webmap.id,
+                    layer_configs,
+                    gis,
+                    new_title,
+                    debug_mode
+                )
+            else:
+                execute_per_layer_form_update(
+                    selected_webmap.id,
+                    layer_configs,
+                    gis,
+                    debug_mode
+                )
+
+
+def execute_per_layer_form_update_as_new(
+    source_webmap_id: str,
+    layer_configs: Dict[str, Dict[str, Any]],
+    gis,
+    new_title: str,
+    debug_mode: bool
+) -> None:
+    """Execute a per-layer form update on a new webmap copy"""
+    
+    def save_and_update_operation():
+        # First, create a copy of the webmap
+        copy_result = copy_webmap_as_new(
+            source_webmap_id,
+            gis,
+            new_title=new_title,
+            debug_mode=debug_mode
+        )
+        
+        if not copy_result.get("success"):
+            return {"success": False, "error": copy_result.get("message", "Failed to create webmap copy")}
+        
+        new_webmap_id = copy_result.get("new_webmap_id")
+        if not new_webmap_id:
+            # Debug mode - return simulated result
+            return {
+                "success": True,
+                "updated_layers": list(layer_configs.keys()),
+                "skipped_layers": [],
+                "errors": {},
+                "expressions_added": [],
+                "new_webmap_id": None,
+                "new_webmap_title": new_title,
+                "portal_url": None,
+                "message": "DEBUG: Would create new webmap and apply forms"
+            }
+        
+        # Then apply the form updates to the new webmap
+        update_result = patch_webmap_forms.update_webmap_forms_by_layer_config(
+            new_webmap_id, layer_configs, gis, debug_mode=debug_mode
+        )
+        
+        # Combine results
+        update_result["new_webmap_id"] = new_webmap_id
+        update_result["new_webmap_title"] = copy_result.get("new_webmap_title")
+        update_result["portal_url"] = copy_result.get("portal_url")
+        update_result["success"] = True
+        
+        return update_result
+    
+    # Execute with status display
+    result = execute_operation_with_status(
+        "Save as New Web Map with Forms",
+        save_and_update_operation,
+        (),
+        success_message="Successfully created new web map with forms",
+        error_message="Failed to create new web map with forms"
+    )
+    
+    # Show results
+    if result:
+        if result.get("success"):
+            updated_count = len(result.get("updated_layers", []))
+            skipped_count = len(result.get("skipped_layers", []))
+            error_count = len(result.get("errors", {}))
+            expressions_added = result.get("expressions_added", [])
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Updated", updated_count)
+            with col2:
+                st.metric("Skipped", skipped_count)
+            with col3:
+                st.metric("Errors", error_count)
+            
+            # Show new webmap info
+            if result.get("new_webmap_id"):
+                st.success(f"Successfully created new web map: {result.get('new_webmap_title', 'N/A')}")
+                
+                portal_url = result.get("portal_url")
+                if portal_url:
+                    st.markdown("---")
+                    st.markdown("### Access Your New Web Map")
+                    st.markdown(f"[**Open in Portal**]({portal_url})")
+                    st.markdown(f"*Direct link: `{portal_url}`*")
+            
+            if expressions_added:
+                st.info(f"Expressions added to web map: {', '.join(expressions_added)}")
+            
+            if updated_count > 0:
+                st.success(f"Successfully updated {updated_count} layers in the new web map")
+                if debug_mode:
+                    st.info("Debug mode: Changes were simulated and not saved to the server")
+            
+            if result.get("errors"):
+                with st.expander("Error Details", expanded=True):
+                    for layer_url, error_msg in result["errors"].items():
+                        st.error(f"{layer_url}: {error_msg}")
+        else:
+            st.error(f"{result.get('error', 'Failed to create new web map with forms')}")
 
 
 def execute_per_layer_form_update(
@@ -593,6 +782,93 @@ def show_batch_operations():
                     param_values["editable"],
                     debug_mode
                 )
+
+
+def execute_form_update_as_new_with_status(
+    source_webmap_id: str,
+    field_name: str,
+    expression_name: str,
+    expression_value: Optional[str],
+    group_name: str,
+    field_label: Optional[str],
+    editable: bool,
+    new_title: str,
+    debug_mode: bool
+) -> None:
+    """Execute a form update on a new webmap copy with status display"""
+    
+    def save_and_update_operation():
+        # First, create a copy of the webmap
+        copy_result = copy_webmap_as_new(
+            source_webmap_id,
+            get_gis_object(),
+            new_title=new_title,
+            debug_mode=debug_mode
+        )
+        
+        if not copy_result.get("success"):
+            return {"success": False, "error": copy_result.get("message", "Failed to create webmap copy"), "layers": []}
+        
+        new_webmap_id = copy_result.get("new_webmap_id")
+        if not new_webmap_id:
+            # Debug mode - return simulated result
+            return {
+                "success": True,
+                "layers": [],
+                "new_webmap_id": None,
+                "new_webmap_title": new_title,
+                "portal_url": None,
+                "message": "DEBUG: Would create new webmap and apply forms"
+            }
+        
+        # Then apply the form updates to the new webmap
+        updated_layers = patch_webmap_forms.update_webmap_forms(
+            new_webmap_id, get_gis_object(), field_name, expression_name, expression_value,
+            group_name, field_label, editable
+        )
+        
+        return {
+            "success": True,
+            "layers": updated_layers,
+            "new_webmap_id": new_webmap_id,
+            "new_webmap_title": copy_result.get("new_webmap_title"),
+            "portal_url": copy_result.get("portal_url"),
+            "message": f"Successfully created new web map and updated forms"
+        }
+    
+    # Execute with status display
+    result = execute_operation_with_status(
+        "Save as New Web Map with Forms",
+        save_and_update_operation,
+        (),
+        success_message="Successfully created new web map with forms",
+        error_message="Failed to create new web map with forms"
+    )
+    
+    # Show results
+    if result:
+        if result.get("success"):
+            layers_updated = len(result.get("layers", []))
+            
+            # Show new webmap info
+            if result.get("new_webmap_id"):
+                st.success(f"Successfully created new web map: {result.get('new_webmap_title', 'N/A')}")
+                
+                portal_url = result.get("portal_url")
+                if portal_url:
+                    st.markdown("---")
+                    st.markdown("### Access Your New Web Map")
+                    st.markdown(f"[**Open in Portal**]({portal_url})")
+                    st.markdown(f"*Direct link: `{portal_url}`*")
+            
+            if layers_updated > 0:
+                st.success(f"Successfully updated {layers_updated} layers in the new web map")
+                if debug_mode:
+                    st.info("Debug mode: Changes were simulated and not saved to the server")
+            else:
+                st.info("Form configuration added to the new web map")
+        else:
+            st.error(f"{result.get('error', 'Failed to create new web map with forms')}")
 
 
 def execute_form_update_with_status(
@@ -935,6 +1211,136 @@ def execute_form_propagation(
         logger.error(f"Error propagating form elements in web map {webmap_id}: {str(e)}")
         progress_bar.empty()
 
+def show_save_as_new_simple(gis, key_prefix: str = "save_as_new"):
+    """Display a simplified Save as New Web Map interface that can be embedded in other operations"""
+    st.markdown("### Save as New Web Map")
+    st.markdown("Create a copy of an existing web map with a new title. The new map will contain all layers and configurations from the source.")
+    
+    # Web map selection using ItemSelector
+    item_selector = ItemSelector(gis, "Web Map", key_prefix)
+    selected_webmap = item_selector.show(
+        title="Source Web Map",
+        help_text="Select the web map you want to copy.",
+        default_id=st.session_state.get(f"{key_prefix}_webmap_id", "")
+    )
+    
+    if not selected_webmap:
+        st.info("Please select a web map to copy.")
+        return
+    
+    # Store selected webmap ID in session state
+    st.session_state[f"{key_prefix}_webmap_id"] = selected_webmap.id
+    
+    # Get MAP_SUFFIX from settings
+    map_suffix = get_environment_setting("MAP_SUFFIX", "_Copy")
+    
+    # Title input with preview
+    st.subheader("New Web Map Title")
+    default_title = f"{selected_webmap.title}{map_suffix}"
+    
+    custom_title = st.text_input(
+        "Title",
+        value=default_title,
+        help=f"Default: <Original Title>{map_suffix}. You can customize this title.",
+        key=f"{key_prefix}_title"
+    )
+    
+    if not custom_title:
+        custom_title = default_title
+    
+    # Show preview
+    st.info(f"**Preview:** The new web map will be titled: **{custom_title}**")
+    
+    # Debug mode control
+    debug_mode = show_debug_mode_control(key_prefix)
+    
+    # Execute button
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        save_button = st.button("Save as New Web Map", type="primary", use_container_width=True, key=f"{key_prefix}_button")
+    
+    # Handle save request
+    if save_button:
+        execute_save_as_new(
+            selected_webmap.id,
+            custom_title,
+            gis,
+            debug_mode
+        )
+
+
+def show_save_as_new():
+    """Display the Save as New Web Map interface (standalone version)"""
+    gis = get_gis_object()
+    if not gis:
+        return
+    show_save_as_new_simple(gis, "save_as_new")
+
+
+def execute_save_as_new(
+    webmap_id: str,
+    new_title: str,
+    gis,
+    debug_mode: bool
+) -> None:
+    """Execute the Save as New operation with status display"""
+    
+    def save_operation():
+        return copy_webmap_as_new(
+            webmap_id,
+            gis,
+            new_title=new_title,
+            debug_mode=debug_mode
+        )
+    
+    # Execute with status display
+    result = execute_operation_with_status(
+        "Save as New Web Map",
+        save_operation,
+        (),
+        success_message="Successfully created new web map",
+        error_message="Failed to create new web map"
+    )
+    
+    # Show results
+    if result:
+        if result.get("success"):
+            st.success(f"{result.get('message', 'Successfully created new web map')}")
+            
+            # Display new web map details
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("New Web Map Title", result.get("new_webmap_title", "N/A"))
+            with col2:
+                if result.get("new_webmap_id"):
+                    st.metric("New Web Map ID", result.get("new_webmap_id", "N/A"))
+            
+            # Show portal link if available
+            portal_url = result.get("portal_url")
+            if portal_url:
+                st.markdown("---")
+                st.markdown("### Access Your New Web Map")
+                st.markdown(f"[**Open in Portal**]({portal_url})")
+                st.markdown(f"*Direct link: `{portal_url}`*")
+            elif debug_mode:
+                st.info("Debug Mode: Portal link will be available when running in production mode")
+            
+            if debug_mode:
+                st.info("**Debug Mode**: The web map was not actually created. Disable debug mode to create the map.")
+        else:
+            st.error(f"{result.get('message', 'Failed to create new web map')}")
+            
+            # Show troubleshooting tips
+            with st.expander("Troubleshooting", expanded=False):
+                st.markdown("""
+                **Common issues:**
+                - Ensure you have permission to read the source web map
+                - Verify you have permission to create new web maps
+                - Check that the web map ID is correct
+                - Try running in Debug Mode to see more details
+                """)
+
+
 def show_help():
     """Display help information for the Web Map Forms tool"""
     with st.expander("Need Help?"):
@@ -970,6 +1376,17 @@ def show_help():
         
         #### Batch Operations Tab
         Apply the same form configuration to multiple web maps at once.
+        
+        #### Save as New Webmap Option
+        When you select "Save as New Webmap" as the operation mode, you can create a copy of an existing web map with a new title.
+        
+        - **Source Web Map**: Select the web map you want to copy
+        - **Title**: Customize the title for the new web map (default: <Original Title>_<Suffix>)
+        - The new map will contain all layers and configurations from the source
+        - A link to the new web map will be provided after creation
+        - Configure the default suffix in Settings → General → Map Suffix
+        
+        This option is available in both the "Update Forms" and "Per-Layer Configuration" tabs.
         
         #### Debug Mode
         When Debug Mode is enabled, the tool will simulate updates without actually saving changes to the server.

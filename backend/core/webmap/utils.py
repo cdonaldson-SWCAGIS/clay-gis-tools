@@ -5,10 +5,12 @@ No Streamlit dependencies - pure backend logic.
 """
 
 import logging
+import os
 from typing import Optional, Dict, Any, Generator, Tuple, List
 from arcgis.gis import GIS
 from arcgis.features import FeatureLayer
 from arcgis.gis import Item
+from arcgis.map import Map
 
 from backend.utils.config import OPERATIONAL_LAYERS_KEY, URL_KEY, LAYERS_KEY, TITLE_KEY, UNNAMED_LAYER
 from backend.utils.exceptions import WebMapNotFoundError, InvalidWebMapError, LayerProcessingError
@@ -353,3 +355,125 @@ def find_layers_with_field(webmap_data: Dict[str, Any], gis: GIS, target_field: 
     
     logger.info(f"Found {len(matching_layers)} layers with field '{target_field}'")
     return matching_layers
+
+
+def get_portal_url(gis: GIS) -> str:
+    """
+    Get the portal URL for the authenticated user.
+    
+    Args:
+        gis: Authenticated GIS object
+        
+    Returns:
+        Portal URL string (without trailing slash)
+    """
+    # Try multiple methods to get portal URL
+    if hasattr(gis, 'url') and gis.url:
+        portal_url = gis.url
+    elif hasattr(gis, 'properties') and hasattr(gis.properties, 'url') and gis.properties.url:
+        portal_url = gis.properties.url
+    else:
+        # Fallback: default to ArcGIS Online
+        portal_url = "https://www.arcgis.com"
+        logger.warning("Could not determine portal URL, defaulting to ArcGIS Online")
+    
+    # Ensure URL doesn't end with slash
+    return portal_url.rstrip('/')
+
+
+def copy_webmap_as_new(
+    source_webmap_id: str,
+    gis: GIS,
+    new_title: Optional[str] = None,
+    map_suffix: Optional[str] = None,
+    debug_mode: bool = False
+) -> Dict[str, Any]:
+    """
+    Create a copy of a web map with a new title using the Map.save() method.
+    
+    Args:
+        source_webmap_id: ID of the source web map to copy
+        gis: Authenticated GIS object
+        new_title: Custom title for the new web map (if None, uses <original>_<suffix>)
+        map_suffix: Suffix to append to title (if None, uses MAP_SUFFIX env var)
+        debug_mode: If True, simulate the operation without creating the map
+        
+    Returns:
+        Dictionary containing:
+        - success: bool
+        - new_webmap_id: str (if successful)
+        - new_webmap_title: str
+        - portal_url: str (link to the new web map)
+        - message: str
+        - source_webmap_title: str (for reference)
+    """
+    try:
+        # Get source web map
+        source_item = get_webmap_item(source_webmap_id, gis)
+        
+        # Determine new title
+        if not new_title:
+            # Get suffix from parameter or environment variable
+            if map_suffix is None:
+                map_suffix = os.environ.get("MAP_SUFFIX", "_Copy")
+            new_title = f"{source_item.title}{map_suffix}"
+        
+        if debug_mode:
+            logger.info(f"DEBUG MODE: Would create web map '{new_title}'")
+            portal_url = get_portal_url(gis)
+            return {
+                "success": True,
+                "new_webmap_id": None,
+                "new_webmap_title": new_title,
+                "portal_url": None,
+                "message": f"DEBUG: Would create web map '{new_title}'",
+                "source_webmap_title": source_item.title
+            }
+        
+        # Create Map object and save as new
+        logger.info(f"Creating copy of web map '{source_item.title}' as '{new_title}'")
+        map_obj = Map(source_item)
+        
+        item_props = {
+            "title": new_title,
+            "snippet": source_item.description or f"Copy of {source_item.title}",
+            "tags": (source_item.tags or []) + ["copied", "save_as_new"]
+        }
+        
+        new_item = map_obj.save(item_props)
+        
+        # Get portal URL and construct link
+        portal_url = get_portal_url(gis)
+        item_url = f"{portal_url}/home/item.html?id={new_item.id}"
+        
+        logger.info(f"Successfully created web map '{new_title}' with ID: {new_item.id}")
+        
+        return {
+            "success": True,
+            "new_webmap_id": new_item.id,
+            "new_webmap_title": new_item.title,
+            "portal_url": item_url,
+            "message": f"Successfully created web map '{new_title}'",
+            "source_webmap_title": source_item.title
+        }
+        
+    except (WebMapNotFoundError, InvalidWebMapError) as e:
+        logger.error(f"Error copying web map: {e}")
+        return {
+            "success": False,
+            "new_webmap_id": None,
+            "new_webmap_title": None,
+            "portal_url": None,
+            "message": f"Error: {str(e)}",
+            "source_webmap_title": None
+        }
+    except Exception as e:
+        logger.error(f"Unexpected error copying web map: {e}")
+        return {
+            "success": False,
+            "new_webmap_id": None,
+            "new_webmap_title": None,
+            "portal_url": None,
+            "message": f"Unexpected error: {str(e)}",
+            "source_webmap_title": None
+        }

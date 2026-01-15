@@ -17,16 +17,12 @@ logger = get_logger("common_operations")
 
 def ensure_authentication() -> bool:
     """
-    Ensure the user is authenticated. Show warning if not.
+    Ensure the user is authenticated.
     
     Returns:
         True if authenticated, False otherwise
     """
-    if not st.session_state.get("authenticated", False):
-        st.warning("Please authenticate first")
-        st.info("Use the navigation sidebar to go to the Authentication page")
-        return False
-    return True
+    return st.session_state.get("authenticated", False)
 
 
 def get_gis_object() -> Optional[GIS]:
@@ -515,3 +511,27 @@ def clear_session_cache(prefix: str = None) -> None:
     
     if keys_to_remove:
         logger.info(f"Cleared {len(keys_to_remove)} cached values from session state")
+
+
+def get_portal_url(gis: GIS) -> str:
+    """
+    Get the portal URL for the authenticated user.
+    
+    Args:
+        gis: Authenticated GIS object
+        
+    Returns:
+        Portal URL string (without trailing slash)
+    """
+    # Try multiple methods to get portal URL
+    if hasattr(gis, 'url') and gis.url:
+        portal_url = gis.url
+    elif hasattr(gis, 'properties') and hasattr(gis.properties, 'url') and gis.properties.url:
+        portal_url = gis.properties.url
+    else:
+        # Fallback: default to ArcGIS Online
+        portal_url = "https://www.arcgis.com"
+        logger.warning("Could not determine portal URL, defaulting to ArcGIS Online")
+    
+    # Ensure URL doesn't end with slash
+    return portal_url.rstrip('/')

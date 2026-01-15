@@ -15,9 +15,19 @@ if str(project_root) not in sys.path:
 from frontend.components.item_selector import ItemSelector, get_webmap_item
 from frontend.components.common_operations import (
     ensure_authentication, get_gis_object, show_debug_mode_control,
-    execute_operation_with_status, show_tool_header
+    execute_operation_with_status, show_tool_header, get_environment_setting
 )
 from backend.core.webmap.utils import get_webmap_layer_details
+
+# Import copy_webmap_as_new with fallback
+try:
+    from backend.core.webmap.utils import copy_webmap_as_new
+except ImportError:
+    # Fallback: import directly if module cache issue
+    import importlib
+    import backend.core.webmap.utils as webmap_utils
+    importlib.reload(webmap_utils)
+    copy_webmap_as_new = webmap_utils.copy_webmap_as_new
 
 # Import AgGrid components
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode, JsCode
@@ -61,7 +71,7 @@ def show():
     show_tool_header(
         "Web Map Filters",
         "This tool allows you to configure definition expressions (filters) individually for each layer in your ArcGIS web maps.",
-        "🔍"
+        ""
     )
     
     # Show per-layer configuration interface
@@ -69,38 +79,6 @@ def show():
     
     # Show help information
     show_help()
-
-def get_field_type_display_name(field_type: str) -> str:
-    """
-    Convert ArcGIS field type to a user-friendly display name.
-    
-    Args:
-        field_type: ArcGIS field type (e.g., 'esriFieldTypeString', 'esriFieldTypeDouble')
-        
-    Returns:
-        User-friendly type name (e.g., 'Text', 'Double')
-    """
-    type_mapping = {
-        "esriFieldTypeString": "Text",
-        "esriFieldTypeInteger": "Integer",
-        "esriFieldTypeSmallInteger": "Small Integer",
-        "esriFieldTypeDouble": "Double",
-        "esriFieldTypeSingle": "Single",
-        "esriFieldTypeDate": "Date",
-        "esriFieldTypeOID": "Object ID",
-        "esriFieldTypeGUID": "GUID",
-        "esriFieldTypeGlobalID": "Global ID",
-        "esriFieldTypeBlob": "Blob",
-        "esriFieldTypeRaster": "Raster",
-        "esriFieldTypeGeometry": "Geometry",
-        "esriFieldTypeXML": "XML"
-    }
-    # Remove 'esriFieldType' prefix and format nicely
-    if field_type.startswith("esriFieldType"):
-        base_type = field_type[13:]  # Remove 'esriFieldType' prefix
-        return type_mapping.get(field_type, base_type)
-    return type_mapping.get(field_type, field_type)
-
 
 def build_filter_expression(field_name: str, operator: str, value: str) -> str:
     """
@@ -210,64 +188,6 @@ def show_per_layer_config():
     if not layer_details:
         st.info("Click 'Load Layers' to fetch the layer list.")
         return
-    
-    # Display layer and field information for easy copy/paste
-    st.markdown("#### Layer and Field Reference")
-    st.caption("Expand each layer to view its available fields grouped by type. Click on field names to copy them.")
-    
-    # Create expandable sections for each layer showing their fields grouped by type
-    for layer in layer_details:
-        layer_name = layer["name"]
-        layer_path = layer["path"]
-        fields_with_types = layer.get("fields_with_types", [])
-        
-        # Fallback to simple field names if types not available
-        if not fields_with_types:
-            fields = layer.get("fields", [])
-            fields_with_types = [{"name": f, "type": "Unknown"} for f in fields]
-        
-        with st.expander(f"**{layer_name}** ({layer_path})", expanded=False):
-            if fields_with_types:
-                # Group fields by type
-                fields_by_type = {}
-                for field in fields_with_types:
-                    field_type = field.get("type", "Unknown")
-                    display_type = get_field_type_display_name(field_type)
-                    if display_type not in fields_by_type:
-                        fields_by_type[display_type] = []
-                    fields_by_type[display_type].append(field["name"])
-                
-                # Sort types for consistent display
-                sorted_types = sorted(fields_by_type.keys())
-                
-                st.markdown(f"**Available fields ({len(fields_with_types)} total):**")
-                
-                # Display fields grouped by type
-                for field_type in sorted_types:
-                    field_names = sorted(fields_by_type[field_type])
-                    st.markdown(f"**{field_type}** ({len(field_names)} fields)")
-                    
-                    # Display all fields of this type in a selectable text block
-                    fields_text = ", ".join(field_names)
-                    st.code(fields_text, language=None)
-                    
-                    # Also display fields in a grid for visual reference
-                    cols_per_row = 4
-                    for i in range(0, len(field_names), cols_per_row):
-                        cols = st.columns(cols_per_row)
-                        for j, col in enumerate(cols):
-                            if i + j < len(field_names):
-                                field_name = field_names[i + j]
-                                # Use code block for easy selection/copying
-                                col.code(field_name, language=None)
-                    
-                    # Add spacing between type groups
-                    if field_type != sorted_types[-1]:
-                        st.markdown("")  # Empty line between groups
-            else:
-                st.info("No fields available for this layer.")
-    
-    st.divider()
     
     # Define filter operators
     filter_operators = ["=", "IN", "IS NOT NULL"]
@@ -420,11 +340,37 @@ def show_per_layer_config():
     selected_count = edited_df["Apply"].sum()
     st.markdown(f"**Selected layers:** {selected_count}")
     
+    # Operation mode selection (at the end, before execution)
+    st.markdown("---")
+    operation_mode = st.radio(
+        "Apply Changes To",
+        ["Update Webmap Layer(s)", "Save as New Webmap"],
+        horizontal=True,
+        help="Choose whether to update the existing webmap or create a new copy with these changes",
+        key="filters_operation_mode"
+    )
+    
+    # If "Save as New Webmap", show title input
+    new_title = None
+    if operation_mode == "Save as New Webmap":
+        map_suffix = get_environment_setting("MAP_SUFFIX", "_Copy")
+        default_title = f"{selected_webmap.title}{map_suffix}"
+        new_title = st.text_input(
+            "New Web Map Title",
+            value=default_title,
+            help=f"Default: <Original Title>{map_suffix}. You can customize this title.",
+            key="filters_new_title"
+        )
+        if not new_title:
+            new_title = default_title
+        st.info(f"**Preview:** The new web map will be titled: **{new_title}**")
+    
     # Execute button
     col1, col2 = st.columns([1, 3])
     with col1:
+        button_text = "Save as New Web Map" if operation_mode == "Save as New Webmap" else "Update Selected Layers"
         update_button = st.button(
-            "Update Selected Layers",
+            button_text,
             type="primary",
             use_container_width=True,
             disabled=selected_count == 0
@@ -484,13 +430,118 @@ def show_per_layer_config():
             for error in validation_errors:
                 st.warning(f"- {error}")
         elif layer_configs:
-            # Execute the per-layer update
-            execute_per_layer_filter_update(
-                selected_webmap.id,
-                layer_configs,
-                gis,
-                debug_mode
-            )
+            # Execute the per-layer update or save as new
+            if operation_mode == "Save as New Webmap":
+                execute_per_layer_filter_update_as_new(
+                    selected_webmap.id,
+                    layer_configs,
+                    gis,
+                    new_title,
+                    debug_mode
+                )
+            else:
+                execute_per_layer_filter_update(
+                    selected_webmap.id,
+                    layer_configs,
+                    gis,
+                    debug_mode
+                )
+
+
+def execute_per_layer_filter_update_as_new(
+    source_webmap_id: str,
+    layer_configs: Dict[str, Dict[str, str]],
+    gis,
+    new_title: str,
+    debug_mode: bool
+) -> None:
+    """Execute a per-layer filter update on a new webmap copy"""
+    
+    def save_and_update_operation():
+        # First, create a copy of the webmap
+        copy_result = copy_webmap_as_new(
+            source_webmap_id,
+            gis,
+            new_title=new_title,
+            debug_mode=debug_mode
+        )
+        
+        if not copy_result.get("success"):
+            return {"success": False, "error": copy_result.get("message", "Failed to create webmap copy")}
+        
+        new_webmap_id = copy_result.get("new_webmap_id")
+        if not new_webmap_id:
+            # Debug mode - return simulated result
+            return {
+                "success": True,
+                "updated_layers": list(layer_configs.keys()),
+                "skipped_layers": [],
+                "errors": {},
+                "new_webmap_id": None,
+                "new_webmap_title": new_title,
+                "portal_url": None,
+                "message": "DEBUG: Would create new webmap and apply filters"
+            }
+        
+        # Then apply the filter updates to the new webmap
+        update_result = patch_webmap_filters.update_webmap_definitions_by_layer_config(
+            new_webmap_id, layer_configs, gis, debug_mode=debug_mode
+        )
+        
+        # Combine results
+        update_result["new_webmap_id"] = new_webmap_id
+        update_result["new_webmap_title"] = copy_result.get("new_webmap_title")
+        update_result["portal_url"] = copy_result.get("portal_url")
+        update_result["success"] = True
+        
+        return update_result
+    
+    # Execute with status display
+    result = execute_operation_with_status(
+        "Save as New Web Map with Filters",
+        save_and_update_operation,
+        (),
+        success_message="Successfully created new web map with filters",
+        error_message="Failed to create new web map with filters"
+    )
+    
+    # Show results
+    if result:
+        if result.get("success"):
+            updated_count = len(result.get("updated_layers", []))
+            skipped_count = len(result.get("skipped_layers", []))
+            error_count = len(result.get("errors", {}))
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Updated", updated_count)
+            with col2:
+                st.metric("Skipped", skipped_count)
+            with col3:
+                st.metric("Errors", error_count)
+            
+            # Show new webmap info
+            if result.get("new_webmap_id"):
+                st.success(f"Successfully created new web map: {result.get('new_webmap_title', 'N/A')}")
+                
+                portal_url = result.get("portal_url")
+                if portal_url:
+                    st.markdown("---")
+                    st.markdown("### Access Your New Web Map")
+                    st.markdown(f"[**Open in Portal**]({portal_url})")
+                    st.markdown(f"*Direct link: `{portal_url}`*")
+            
+            if updated_count > 0:
+                st.success(f"Successfully updated {updated_count} layers in the new web map")
+                if debug_mode:
+                    st.info("Debug mode: Changes were simulated and not saved to the server")
+            
+            if result.get("errors"):
+                with st.expander("Error Details", expanded=True):
+                    for layer_url, error_msg in result["errors"].items():
+                        st.error(f"{layer_url}: {error_msg}")
+        else:
+            st.error(f"{result.get('error', 'Failed to create new web map with filters')}")
 
 
 def execute_per_layer_filter_update(
@@ -540,26 +591,160 @@ def execute_per_layer_filter_update(
                     st.error(f"{layer_url}: {error_msg}")
 
 
+def show_save_as_new():
+    """Display the Save as New Web Map interface"""
+    # Get GIS object
+    gis = get_gis_object()
+    if not gis:
+        return
+    
+    st.markdown("### Save as New Web Map")
+    st.markdown("Create a copy of an existing web map with a new title. The new map will contain all layers and configurations from the source.")
+    
+    # Web map selection using ItemSelector
+    item_selector = ItemSelector(gis, "Web Map", "save_as_new_filters")
+    selected_webmap = item_selector.show(
+        title="Source Web Map",
+        help_text="Select the web map you want to copy.",
+        default_id=st.session_state.get("save_as_new_webmap_id_filters", "")
+    )
+    
+    if not selected_webmap:
+        st.info("Please select a web map to copy.")
+        return
+    
+    # Store selected webmap ID in session state
+    st.session_state.save_as_new_webmap_id_filters = selected_webmap.id
+    
+    # Get MAP_SUFFIX from settings
+    map_suffix = get_environment_setting("MAP_SUFFIX", "_Copy")
+    
+    # Title input with preview
+    st.subheader("New Web Map Title")
+    default_title = f"{selected_webmap.title}{map_suffix}"
+    
+    custom_title = st.text_input(
+        "Title",
+        value=default_title,
+        help=f"Default: <Original Title>{map_suffix}. You can customize this title.",
+        key="save_as_new_title_filters"
+    )
+    
+    if not custom_title:
+        custom_title = default_title
+    
+    # Show preview
+    st.info(f"**Preview:** The new web map will be titled: **{custom_title}**")
+    
+    # Debug mode control
+    debug_mode = show_debug_mode_control("save_as_new_filters")
+    
+    # Execute button
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        save_button = st.button("Save as New Web Map", type="primary", use_container_width=True)
+    
+    # Handle save request
+    if save_button:
+        execute_save_as_new(
+            selected_webmap.id,
+            custom_title,
+            gis,
+            debug_mode
+        )
+
+
+def execute_save_as_new(
+    webmap_id: str,
+    new_title: str,
+    gis,
+    debug_mode: bool
+) -> None:
+    """Execute the Save as New operation with status display"""
+    
+    def save_operation():
+        return copy_webmap_as_new(
+            webmap_id,
+            gis,
+            new_title=new_title,
+            debug_mode=debug_mode
+        )
+    
+    # Execute with status display
+    result = execute_operation_with_status(
+        "Save as New Web Map",
+        save_operation,
+        (),
+        success_message="Successfully created new web map",
+        error_message="Failed to create new web map"
+    )
+    
+    # Show results
+    if result:
+        if result.get("success"):
+            st.success(f"{result.get('message', 'Successfully created new web map')}")
+            
+            # Display new web map details
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("New Web Map Title", result.get("new_webmap_title", "N/A"))
+            with col2:
+                if result.get("new_webmap_id"):
+                    st.metric("New Web Map ID", result.get("new_webmap_id", "N/A"))
+            
+            # Show portal link if available
+            portal_url = result.get("portal_url")
+            if portal_url:
+                st.markdown("---")
+                st.markdown("### Access Your New Web Map")
+                st.markdown(f"[**Open in Portal**]({portal_url})")
+                st.markdown(f"*Direct link: `{portal_url}`*")
+            elif debug_mode:
+                st.info("Debug Mode: Portal link will be available when running in production mode")
+            
+            if debug_mode:
+                st.info("**Debug Mode**: The web map was not actually created. Disable debug mode to create the map.")
+        else:
+            st.error(f"{result.get('message', 'Failed to create new web map')}")
+            
+            # Show troubleshooting tips
+            with st.expander("Troubleshooting", expanded=False):
+                st.markdown("""
+                **Common issues:**
+                - Ensure you have permission to read the source web map
+                - Verify you have permission to create new web maps
+                - Check that the web map ID is correct
+                - Try running in Debug Mode to see more details
+                """)
+
+
 def show_help():
     """Display help information for the Web Map Filters tool"""
     with st.expander("Need Help?"):
         st.markdown("""
         ### Web Map Filters Help
         
-        #### Per-Layer Configuration
+        #### Per-Layer Configuration Tab
         Configure filters individually for each layer in your web map.
         
         1. Select a web map and click "Load Layers"
-        2. Review the **Layer and Field Reference** section above to see available fields for each layer
-        3. Expand a layer to view its fields - click on field names to copy them
-        4. Check the "Apply" box for layers you want to update
-        5. Enter the target field name (copy from the reference section above)
-        6. Select the filter operator (e.g., =, !=, >, <, LIKE, IN, IS NULL)
-        7. Enter the filter value (leave empty for IS NULL/IS NOT NULL)
-        8. Click "Update Selected Layers"
+        2. Check the "Apply" box for layers you want to update
+        3. Enter the target field name (use the dropdown to select from available fields for each layer)
+        4. Select the filter operator (e.g., =, !=, >, <, LIKE, IN, IS NULL)
+        5. Enter the filter value (leave empty for IS NULL/IS NOT NULL)
+        6. Click "Update Selected Layers"
         
         **Note**: Make sure the target field exists in the layer. If you enter a field that 
         doesn't exist in a particular layer, you'll receive a validation error.
+        
+        #### Save as New Webmap Option
+        When you select "Save as New Webmap" as the operation mode, you can create a copy of an existing web map with a new title.
+        
+        - **Source Web Map**: Select the web map you want to copy
+        - **Title**: Customize the title for the new web map (default: <Original Title>_<Suffix>)
+        - The new map will contain all layers and configurations from the source
+        - A link to the new web map will be provided after creation
+        - Configure the default suffix in Settings → General → Map Suffix
         
         #### Filter Examples
         - **Equals (=)**: Operator `=`, Value `123456` → `project_number = '123456'`

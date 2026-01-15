@@ -176,7 +176,7 @@ def clip_feature_layer(
         output_item = gis.content.import_data(
             clipped_feature_set,
             title=output_title,
-            tags=target_item.tags + ['clipped', 'clip_by_template_tag'],
+            tags=target_item.tags + ['clipped'],
             description=f"Clipped version of {target_item.title}"
         )
         
@@ -240,7 +240,7 @@ def batch_clip_layers(
     
     # Show initial status
     status_container, progress_bar = show_operation_status(
-        "Clip by Template Tag",
+        "Clip Operation",
         total_items=len(target_items) + 1,  # +1 for template preparation
         current_item=1,
         current_item_name="Preparing template geometry"
@@ -261,7 +261,7 @@ def batch_clip_layers(
             complete_operation_status(
                 status_container,
                 progress_bar,
-                "Clip by Template Tag",
+                "Clip Operation",
                 False,
                 "Failed to prepare template geometry"
             )
@@ -274,7 +274,7 @@ def batch_clip_layers(
             update_operation_status(
                 status_container,
                 progress_bar,
-                "Clip by Template Tag",
+                "Clip Operation",
                 total_items=len(target_items) + 1,
                 current_item=i + 1,
                 current_item_name=target_item.title
@@ -306,7 +306,7 @@ def batch_clip_layers(
         complete_operation_status(
             status_container,
             progress_bar,
-            "Clip by Template Tag",
+            "Clip Operation",
             successful_count > 0,
             completion_message,
             {
@@ -322,7 +322,7 @@ def batch_clip_layers(
         complete_operation_status(
             status_container,
             progress_bar,
-            "Clip by Template Tag",
+            "Clip Operation",
             False,
             f"Operation failed: {str(e)}"
         )
@@ -359,7 +359,7 @@ def show_clip_results(results: List[ClipResult]) -> None:
     
     # Detailed results
     if successful_count > 0:
-        st.subheader("✅ Successful Operations")
+        st.subheader("Successful Operations")
         for result in results:
             if result.success:
                 with st.expander(f"✓ {result.source_item.title}", expanded=False):
@@ -377,7 +377,7 @@ def show_clip_results(results: List[ClipResult]) -> None:
                             st.write(f"**Status:** {result.message}")
     
     if failed_count > 0:
-        st.subheader("❌ Failed Operations")
+        st.subheader("Failed Operations")
         for result in results:
             if not result.success:
                 with st.expander(f"✗ {result.source_item.title}", expanded=False):
@@ -442,7 +442,7 @@ def validate_clip_inputs(
 
 def create_clip_help_section() -> None:
     """Create a comprehensive help section for the clipping tool."""
-    with st.expander("ℹ️ Clip by Template Tag Help", expanded=False):
+    with st.expander("Clip Operation Help", expanded=False):
         st.markdown("""
         ### How Clipping Works
         

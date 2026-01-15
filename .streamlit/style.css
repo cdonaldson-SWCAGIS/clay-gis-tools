@@ -64,6 +64,30 @@ section[data-testid="stSidebar"] .sidebar-content .block-container,
   padding-bottom: 1rem;
 }
 
+/* Prevent sidebar from being collapsed */
+/* Hide the collapse button */
+button[data-testid="baseButton-header"][aria-label*="Close"],
+button[data-testid="baseButton-header"][aria-label*="close"],
+button[aria-label*="Close sidebar"],
+button[aria-label*="close sidebar"],
+button[kind="header"][aria-label*="Close"],
+button[kind="header"][aria-label*="close"] {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+/* Ensure sidebar stays expanded */
+section[data-testid="stSidebar"] {
+  min-width: 21rem !important;
+}
+
+/* Prevent sidebar collapse via CSS */
+section[data-testid="stSidebar"][aria-expanded="false"] {
+  display: block !important;
+  visibility: visible !important;
+  transform: translateX(0) !important;
+}
+
 /* Typography */
 h1,
 h2,

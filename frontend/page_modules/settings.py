@@ -1,7 +1,7 @@
 import streamlit as st
 import logging
-import os
 import sys
+import os
 from typing import Dict, Any
 
 # Configure logging
@@ -15,20 +15,17 @@ def show():
     st.markdown("""
     ## Application Settings
     
-    Configure global settings for the SWCA GIS Tools application.
+    Configure global settings for the Clay GIS Tools application.
     These settings will be applied across all tools.
     """)
     
     # Create tabs for different settings categories
-    tab1, tab2, tab3 = st.tabs(["General", "Authentication", "Advanced"])
+    tab1, tab2 = st.tabs(["General", "Advanced"])
     
     with tab1:
         show_general_settings()
     
     with tab2:
-        show_authentication_settings()
-    
-    with tab3:
         show_advanced_settings()
     
     # Show help information
@@ -78,6 +75,25 @@ def show_general_settings():
         logging.getLogger().setLevel(numeric_level)
         st.success(f"Logging level set to {log_level}")
     
+    # MAP_SUFFIX setting
+    st.subheader("Web Map Settings")
+    
+    # Get current MAP_SUFFIX from environment or session state
+    current_map_suffix = os.environ.get("MAP_SUFFIX", st.session_state.get("map_suffix", "_Copy"))
+    
+    map_suffix = st.text_input(
+        "Map Suffix (for Save as New)",
+        value=current_map_suffix,
+        help="Suffix to append to copied web map titles (e.g., '_Copy', '_Draft'). Used when saving web maps as new.",
+        key="map_suffix_input"
+    )
+    
+    # Store in session state and update environment variable for this session
+    if map_suffix != st.session_state.get("map_suffix"):
+        st.session_state.map_suffix = map_suffix
+        os.environ["MAP_SUFFIX"] = map_suffix
+        st.success(f"Map suffix set to '{map_suffix}'")
+    
     # UI theme
     st.subheader("UI Theme")
     
@@ -92,63 +108,25 @@ def show_general_settings():
     if theme == "Dark":
         st.info("Dark theme is applied through your Streamlit settings. You can change it by clicking on the menu in the top right corner and selecting 'Settings'.")
     
-    # Reset settings
-    if st.button("Reset to Defaults", key="reset_general"):
-        st.session_state.debug_mode = True
-        logging.getLogger().setLevel(logging.INFO)
-        st.success("General settings reset to defaults")
-        st.rerun()
-
-def show_authentication_settings():
-    """Display authentication settings"""
-    st.header("Authentication Settings")
-    
-    # Environment variables
-    st.subheader("Environment Variables")
-    
-    st.markdown("""
-    You can set environment variables to avoid entering credentials each time.
-    These variables will be used when you select "Environment Variables" on the Authentication page.
-    """)
-    
-    # Show current environment variables
-    env_vars = {
-        "ARCGIS_USERNAME": os.environ.get("ARCGIS_USERNAME", ""),
-        "ARCGIS_PASSWORD": "********" if os.environ.get("ARCGIS_PASSWORD") else "",
-        "ARCGIS_PROFILE": os.environ.get("ARCGIS_PROFILE", "")
-    }
-    
-    # Display environment variables status
-    for var, value in env_vars.items():
-        status = "✅ Set" if value else "❌ Not set"
-        st.write(f"- **{var}**: {status}")
-    
-    st.info("Environment variables must be set outside of this application. They cannot be set from within the application for security reasons.")
-    
-    # Session timeout
-    st.subheader("Session Settings")
-    
-    # Session timeout
-    session_timeout = st.number_input(
-        "Session Timeout (minutes)",
-        min_value=5,
-        max_value=240,
-        value=st.session_state.get("session_timeout", 60),
-        help="Time after which the session will expire and require re-authentication"
-    )
-    
-    if session_timeout != st.session_state.get("session_timeout"):
-        st.session_state.session_timeout = session_timeout
-        st.success(f"Session timeout set to {session_timeout} minutes")
-    
     # Logout button
+    st.subheader("Session")
     if st.session_state.get("authenticated", False):
+        st.write(f"Logged in as: **{st.session_state.get('username', 'Unknown')}**")
         if st.button("Logout", key="logout_button"):
             st.session_state.authenticated = False
             st.session_state.gis = None
             st.session_state.username = None
-            st.success("Logged out successfully")
+            st.session_state._env_auth_attempted = False
             st.rerun()
+    
+    # Reset settings
+    if st.button("Reset to Defaults", key="reset_general"):
+        st.session_state.debug_mode = True
+        logging.getLogger().setLevel(logging.INFO)
+        st.session_state.map_suffix = "_Copy"
+        os.environ["MAP_SUFFIX"] = "_Copy"
+        st.success("General settings reset to defaults")
+        st.rerun()
 
 def show_advanced_settings():
     """Display advanced settings"""
@@ -223,13 +201,7 @@ def show_help():
           - WARNING: Shows warnings and above
           - ERROR: Shows errors and above
           - CRITICAL: Shows only critical errors
-        
-        #### Authentication Settings
-        - **Environment Variables**: Set these outside the application to avoid entering credentials each time
-          - ARCGIS_USERNAME: Your ArcGIS username
-          - ARCGIS_PASSWORD: Your ArcGIS password
-          - ARCGIS_PROFILE: Your ArcGIS profile name (optional)
-        - **Session Timeout**: Time after which the session will expire and require re-authentication
+        - **Map Suffix**: Suffix to append to copied web map titles when using "Save as New" feature (default: "_Copy")
         
         #### Advanced Settings
         - **Request Timeout**: Maximum time to wait for API requests to complete
@@ -238,5 +210,4 @@ def show_help():
         #### Troubleshooting
         - If you encounter issues, try resetting to defaults
         - Check the logging level to see more detailed error messages
-        - Ensure your environment variables are set correctly
         """)

@@ -177,7 +177,7 @@ def show_coordinate_system_selection(
 
 def create_tag_search_help() -> None:
     """Create a help section for tag search functionality."""
-    with st.expander("ℹ️ Tag Search Help", expanded=False):
+    with st.expander("Tag Search Help", expanded=False):
         st.markdown("""
         ### How Tag Search Works
         

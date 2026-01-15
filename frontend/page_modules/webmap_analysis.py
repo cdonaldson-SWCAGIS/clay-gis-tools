@@ -28,15 +28,7 @@ def show():
     """Display the Web Map Analysis interface."""
     st.title("Web Map Analysis")
     
-    # Check authentication
-    if not st.session_state.get("authenticated", False):
-        st.warning("Please authenticate first to use this tool.")
-        return
-    
     gis = st.session_state.get("gis")
-    if not gis:
-        st.error("No GIS connection found. Please authenticate.")
-        return
     
     st.markdown("""
     ## Analyze Web Maps for Optimization
@@ -46,7 +38,7 @@ def show():
     """)
     
     # Session state cleanup
-    if st.sidebar.button("🗑️ Clear Analysis Results"):
+    if st.sidebar.button("Clear Analysis Results"):
         if "analysis_results" in st.session_state:
             del st.session_state["analysis_results"]
         if "analysis_timestamp" in st.session_state:
@@ -470,10 +462,10 @@ def show_layer_issues(layer_name: str, results: Dict[str, Any]):
                             issues_found = True
                             severity = item.get("severity", "info")
                             severity_icon = {
-                                "critical": "🔴",
-                                "warning": "🟡",
-                                "info": "ℹ️"
-                            }.get(severity, "ℹ️")
+                                "critical": "",
+                                "warning": "",
+                                "info": ""
+                            }.get(severity, "")
                             
                             with st.expander(f"{severity_icon} {subcategory_name.replace('_', ' ').title()}", expanded=True):
                                 # Display issue details

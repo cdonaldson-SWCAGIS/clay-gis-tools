@@ -6,7 +6,6 @@ No Streamlit dependencies - pure backend logic.
 from arcgis.gis import GIS
 import os
 import logging
-from typing import Optional
 
 from backend.utils.logging import get_logger
 from backend.utils.exceptions import AuthenticationError
@@ -14,7 +13,7 @@ from backend.utils.exceptions import AuthenticationError
 logger = get_logger("auth")
 
 
-def get_gis_object(username: str, password: str, profile: Optional[str] = None) -> GIS:
+def get_gis_object(username: str, password: str) -> GIS:
     """
     Attempts to create and return a GIS object.
     Raises an exception if authentication fails.
@@ -22,7 +21,6 @@ def get_gis_object(username: str, password: str, profile: Optional[str] = None) 
     Args:
         username: ArcGIS username
         password: ArcGIS password
-        profile: Optional profile name
         
     Returns:
         Authenticated GIS object
@@ -53,9 +51,8 @@ def authenticate_from_env() -> GIS:
     """
     username = os.environ.get("ARCGIS_USERNAME")
     password = os.environ.get("ARCGIS_PASSWORD")
-    profile = os.environ.get("ARCGIS_PROFILE")
 
     if not username or not password:
-        raise ValueError("ARCGIS_USERNAME and ARCGIS_PASSWORD environment variables must be set for headless authentication.")
+        raise ValueError("ARCGIS_USERNAME and ARCGIS_PASSWORD environment variables must be set.")
 
-    return get_gis_object(username, password, profile)
+    return get_gis_object(username, password)
