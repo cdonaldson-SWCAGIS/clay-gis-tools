@@ -1,139 +1,171 @@
 # Clay GIS Tools
 
-A collection of Python utilities and a web application designed to automate and streamline GIS workflows for AGOL Admins. These tools interact with ArcGIS Online/Portal to perform operations that would otherwise require manual intervention through the web interface.
+A Python-based web application and utility suite for automating GIS workflows in ArcGIS Online/Portal. Streamline operations that typically require manual intervention through the web interface.
 
 ![image](https://github.com/user-attachments/assets/b771d473-1635-4905-83ec-ea4d07bfec65)
 
+## Table of Contents
 
-### Current Capabilities
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [Development](#development)
+- [Security](#security)
+- [Contributing](#contributing)
 
-- **Web Map Filter Updates**: Programmatically update definition expressions (filters) in ArcGIS web maps
-- **Web Map Form Configuration**: Update form elements and propagate form configurations between layers
-- **Recursive Layer Processing**: Process nested group layers within web maps
-- **Field-Based Targeting**: Identify and update layers containing specific fields
+## Features
+
+### Core Capabilities
+
+- **Web Map Filter Updates**: Programmatically update definition expressions (filters) across multiple layers in web maps
+- **Web Map Form Configuration**: Update form elements and propagate configurations between layers
+- **Web Map Analysis**: Analyze web map structure and generate detailed reports
+- **Clip by Template Tag**: Automated clipping operations based on template tags
+- **Recursive Layer Processing**: Handle complex web map structures including nested group layers
 - **Batch Processing**: Process multiple web maps with the same configuration
 - **Web Application Interface**: User-friendly Streamlit interface for non-technical users
-- **Debug/Test Mode**: Simulate operations without making actual changes
+- **Debug Mode**: Simulate operations without making actual changes
+
+### Web Application Pages
+
+- **Authentication**: Connect to ArcGIS Online/Portal
+- **Web Map Filters**: Update definition expressions in web maps
+- **Web Map Forms**: Configure form elements in web maps
+- **Web Map Analysis**: Analyze and report on web map structures
+- **Clip by Template Tag**: Perform clipping operations
+- **Settings**: Configure application settings and debug mode
 
 ## Installation
 
 ### Prerequisites
 
-- Python 3.x
+- Python 3.8 or higher
 - ArcGIS Online/Portal account with appropriate permissions
 - Docker (optional, for containerized deployment)
 
-### Setup Options
+### Quick Start
 
-#### Option 1: Docker Installation (Recommended)
+#### Option 1: Docker Compose (Recommended)
 
-1. Clone this repository:
-   ```
-   git clone https://github.com/swca/swca-gis-tools.git
-   cd swca-gis-tools
-   ```
+```bash
+git clone https://github.com/swca/clay-gis-tools.git
+cd clay-gis-tools
+docker-compose up --build
+```
 
-2. Build and run with Docker Compose:
-   ```
-   docker-compose up --build
-   ```
+Access the application at http://localhost:8501
 
-3. Access the application at http://localhost:8501
+#### Option 2: Docker (Manual)
 
-#### Option 2: Docker Installation (Manual)
-
-1. Clone this repository:
-   ```
-   git clone https://github.com/swca/swca-gis-tools.git
-   cd swca-gis-tools
-   ```
-
-2. Build the Docker image:
-   ```
-   docker build -t clay-gis-tools .
-   ```
-
-3. Run the container:
-   ```
-   docker run -p 8501:8501 clay-gis-tools
-   ```
-
-4. Access the application at http://localhost:8501
+```bash
+git clone https://github.com/swca/clay-gis-tools.git
+cd clay-gis-tools
+docker build -t clay-gis-tools .
+docker run -p 8501:8501 clay-gis-tools
+```
 
 #### Option 3: Local Installation
 
-1. Clone this repository:
-   ```
-   git clone https://github.com/swca/swca-gis-tools.git
-   cd swca-gis-tools
-   ```
+```bash
+git clone https://github.com/swca/clay-gis-tools.git
+cd clay-gis-tools
+pip install -r requirements.txt
+python app.py
+```
 
-2. Install required packages:
-   ```
-   pip install -r requirements.txt
-   ```
+## Configuration
 
-3. Configure authentication:
-   - Set environment variables for ArcGIS credentials:
-     ```
-     # For Windows
-     set ARCGIS_USERNAME=your_username
-     set ARCGIS_PASSWORD=your_password
-     set ARCGIS_PROFILE=your_profile
-     
-     # For macOS/Linux
-     export ARCGIS_USERNAME=your_username
-     export ARCGIS_PASSWORD=your_password
-     export ARCGIS_PROFILE=your_profile
-     ```
-   - Alternatively, you can enter credentials directly in the web application or update them in the script (not recommended for production)
+### Environment Variables
+
+Set the following environment variables for authentication:
+
+**Windows (PowerShell):**
+```powershell
+$env:ARCGIS_USERNAME="your_username"
+$env:ARCGIS_PASSWORD="your_password"
+$env:ARCGIS_PROFILE="your_profile"
+$env:DEBUG_MODE="True"  # Optional: Enable debug mode by default
+```
+
+**macOS/Linux:**
+```bash
+export ARCGIS_USERNAME=your_username
+export ARCGIS_PASSWORD=your_password
+export ARCGIS_PROFILE=your_profile
+export DEBUG_MODE=True  # Optional: Enable debug mode by default
+```
+
+**Using .env file:**
+Create a `.env` file in the project root:
+```
+ARCGIS_USERNAME=your_username
+ARCGIS_PASSWORD=your_password
+ARCGIS_PROFILE=your_profile
+DEBUG_MODE=True
+```
+
+> **Note**: Credentials can also be entered directly in the web application interface. The application will attempt automatic authentication from environment variables on startup.
 
 ## Usage
 
 ### Web Application
 
-The Streamlit web application provides a user-friendly interface for accessing all tools:
-
-1. Start the web application:
-   ```
+1. Start the application:
+   ```bash
    python app.py
    ```
 
-2. Open your browser and navigate to the URL displayed in the terminal (typically http://localhost:8501)
+2. Open your browser to http://localhost:8501
 
-3. Use the navigation sidebar to access different tools:
-   - **Authentication**: Connect to ArcGIS Online/Portal
-   - **Web Map Filters**: Update definition expressions in web maps
-   - **Web Map Forms**: Configure form elements in web maps
-   - **Settings**: Configure application settings
+3. Navigate using the sidebar to access different tools:
+   - Authenticate with ArcGIS Online/Portal
+   - Use the various tools to perform operations
+   - Configure settings including debug mode
 
 ### Command Line Utilities
 
-#### Web Map Filter Utility
+#### Web Map Filter Updates
 
-The `patch_webmap_filters.py` utility allows you to update definition expressions in web maps based on a target field.
+Update definition expressions in web maps based on target fields:
 
 ```bash
 # Basic usage
 python src/patch_webmap_filters.py
 
 # With custom parameters
-python src/patch_webmap_filters.py --webmap_id "3d7ba61233c744b997c9e275e8475254" --field "project_number" --filter "project_number = '123456'" --debug
+python src/patch_webmap_filters.py \
+  --webmap_id "3d7ba61233c744b997c9e275e8475254" \
+  --field "project_number" \
+  --filter "project_number = '123456'" \
+  --debug
 ```
 
-#### Web Map Forms Utility
+#### Web Map Form Configuration
 
-The `patch_webmap_forms.py` utility allows you to update form configurations in web maps.
+Update form configurations in web maps:
 
 ```bash
 # Update a field in forms
-python src/patch_webmap_forms.py update "3d7ba61233c744b997c9e275e8475254" --field "project_number" --expression "expr/set-project-number" --group "Metadata" --debug
+python src/patch_webmap_forms.py update \
+  "3d7ba61233c744b997c9e275e8475254" \
+  --field "project_number" \
+  --expression "expr/set-project-number" \
+  --group "Metadata" \
+  --debug
 
 # Propagate form elements from one layer to others
-python src/patch_webmap_forms.py propagate "3d7ba61233c744b997c9e275e8475254" --source "Source Layer Name" --targets "Target Layer 1,Target Layer 2" --fields "field1,field2" --debug
+python src/patch_webmap_forms.py propagate \
+  "3d7ba61233c744b997c9e275e8475254" \
+  --source "Source Layer Name" \
+  --targets "Target Layer 1,Target Layer 2" \
+  --fields "field1,field2" \
+  --debug
 ```
 
-#### Python API Usage
+### Python API
+
+Use the tools programmatically in your own scripts:
 
 ```python
 from src.patch_webmap_filters import update_webmap_definition_by_field
@@ -141,15 +173,11 @@ from src.patch_webmap_forms import update_webmap_forms, propagate_form_elements
 
 # Update filters
 webmap_item_id = "3d7ba61233c744b997c9e275e8475254"
-target_field = "project_number"
-new_filter = "project_number = '123456'"
-
-updated_layers = update_webmap_definition_by_field(webmap_item_id, target_field, new_filter)
-
-if updated_layers:
-    print(f"Successfully updated {len(updated_layers)} layers")
-else:
-    print("No layers were updated")
+updated_layers = update_webmap_definition_by_field(
+    webmap_item_id,
+    target_field="project_number",
+    new_filter="project_number = '123456'"
+)
 
 # Update forms
 updated_layers = update_webmap_forms(
@@ -168,115 +196,36 @@ updated_layers = propagate_form_elements(
 )
 ```
 
-## Features
+## Development
 
-### Web Map Filter Updates
+### Project Structure
 
-- **Problem**: When project parameters change, multiple web maps need to be updated with new filters
-- **Solution**: The Web Map Filters tool allows for programmatic updates to definition expressions across multiple layers in web maps
-- **Benefit**: Ensures consistent filtering across all relevant layers without manual intervention
-- **Batch Processing**: Update multiple web maps with the same filter in a single operation
-
-### Web Map Form Configuration
-
-- **Problem**: Form configurations need to be consistent across multiple layers and web maps
-- **Solution**: The Web Map Forms tool allows for adding/updating form elements and propagating configurations between layers
-- **Benefit**: Ensures consistent form behavior and appearance across all layers
-- **Capabilities**:
-  - Add or update field elements in forms
-  - Configure expressions for field values
-  - Organize fields into logical groups
-  - Copy form configurations from one layer to others
-
-### Recursive Layer Processing
-
-The tools can process complex web map structures, including:
-- Group layers
-- Nested layers
-- Multiple operational layers
-
-### Web Application Interface
-
-The Streamlit web application provides:
-- User-friendly interface for non-technical users
-- Authentication with ArcGIS Online/Portal
-- Search functionality for finding web maps
-- Form-based configuration of tool parameters
-- Real-time feedback on operations
-- Detailed help information for each tool
+```
+clay-gis-tools/
+├── app.py                 # Streamlit application entry point
+├── modules/               # Core application modules
+│   ├── authentication.py  # ArcGIS authentication
+│   ├── webmap_filters.py  # Filter update functionality
+│   ├── webmap_forms.py    # Form configuration
+│   ├── webmap_analysis.py # Analysis and reporting
+│   └── ...
+├── src/                   # Command-line utilities
+│   ├── patch_webmap_filters.py
+│   ├── patch_webmap_forms.py
+│   └── ...
+├── static/                # Static assets
+└── requirements.txt       # Python dependencies
+```
 
 ### Debug Mode
 
-All tools support a debug mode that simulates operations without making actual changes to ArcGIS resources. This is useful for testing and validation.
+Debug mode allows you to test operations without making actual changes to ArcGIS resources:
 
-```python
-# Set to True for testing (no changes saved)
-# Set to False for production (changes saved to server)
-DEBUG_MODE = True
-```
+- **Web Application**: Toggle debug mode in the Settings page
+- **Command Line**: Use the `--debug` flag
+- **Environment**: Set `DEBUG_MODE=True` in environment variables
 
-The web application includes a global debug mode setting that can be toggled in the Settings page.
-
-## Project Status
-
-This project is in active development. Current status:
-
-- ✅ Authentication with ArcGIS Online/Portal
-- ✅ Retrieving web maps by item ID
-- ✅ Parsing web map JSON structure
-- ✅ Identifying layers that contain specific fields
-- ✅ Recursive processing of nested group layers
-- ✅ Updating definition expressions in web map JSON
-- ✅ Updating form configurations in web map JSON
-- ✅ Propagating form elements between layers
-- ✅ Web application interface with Streamlit
-- ✅ Debug mode for testing without making actual changes
-- ✅ Basic error handling for layer processing
-- ✅ Batch processing for multiple web maps
-- ✅ Structured logging system
-
-### Planned Improvements
-
-- Enhanced command-line interface for script parameters
-- Secure credential management
-- Enhanced error handling and recovery
-- Unit tests for core functions
-- Configuration system for environment-specific settings
-- Additional tools for other ArcGIS Online/Portal operations
-- User authentication and role-based access control
-- Scheduled task execution
-
-## Security Considerations
-
-The current implementation includes several security considerations:
-
-1. **Credentials**: 
-   - The application looks for credentials in environment variables:
-     - `ARCGIS_USERNAME`
-     - `ARCGIS_PASSWORD`
-     - `ARCGIS_PROFILE`
-   - The web application allows for manual entry of credentials without storing them
-   - Session-based authentication with timeout settings
-
-2. **Debug Mode**: 
-   - The global `DEBUG_MODE` flag controls whether changes are actually saved to the server
-   - The web application includes a global debug mode setting that can be toggled in the Settings page
-   - Debug mode is enabled by default to prevent accidental changes
-
-3. **Error Handling**: 
-   - Comprehensive error handling to prevent unintended operations
-   - Detailed logging of operations and errors
-   - Verification of changes before committing to the server
-
-## Contributing
-
-Contributions to SWCA GIS Tools are welcome! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/your-feature-name`)
-3. Commit your changes (`git commit -am 'Add some feature'`)
-4. Push to the branch (`git push origin feature/your-feature-name`)
-5. Create a new Pull Request
+When debug mode is enabled, operations are simulated and logged but not saved to the server.
 
 ### Development Guidelines
 
@@ -285,3 +234,62 @@ Contributions to SWCA GIS Tools are welcome! Please follow these steps:
 - Add docstrings for all functions and classes
 - Write unit tests for new functionality
 - Update documentation to reflect changes
+
+## Security
+
+### Credential Management
+
+- **Environment Variables**: Preferred method for production deployments
+- **Session-based**: Web application uses session-based authentication with timeout
+- **No Storage**: Credentials entered in the web interface are not persisted
+
+### Safety Features
+
+- **Debug Mode**: Default enabled to prevent accidental changes
+- **Error Handling**: Comprehensive error handling prevents unintended operations
+- **Logging**: Detailed logging of all operations for audit trails
+- **Verification**: Changes are verified before committing to the server
+
+## Contributing
+
+Contributions are welcome! Please follow these steps:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/your-feature-name`)
+3. Commit your changes (`git commit -am 'Add some feature'`)
+4. Push to the branch (`git push origin feature/your-feature-name`)
+5. Create a new Pull Request
+
+### Development Setup
+
+1. Clone your fork:
+   ```bash
+   git clone https://github.com/your-username/clay-gis-tools.git
+   cd clay-gis-tools
+   ```
+
+2. Create a virtual environment:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. Set up environment variables (see [Configuration](#configuration))
+
+5. Run the application:
+   ```bash
+   python app.py
+   ```
+
+## License
+
+[Add license information if applicable]
+
+## Support
+
+For issues, questions, or contributions, please use the GitHub issue tracker.

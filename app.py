@@ -24,11 +24,8 @@ css_path = os.path.join(".streamlit", "style.css")
 if os.path.exists(css_path):
     load_css(css_path)
 
-# Create modules directory if it doesn't exist
-os.makedirs("modules", exist_ok=True)
-
 # Import modules (will be created in subsequent steps)
-from modules import authentication, webmap_filters, webmap_forms, webmap_analysis, settings, clip_by_template_tag
+from modules import authentication, webmap_filters, webmap_forms, webmap_analysis, settings
 from modules.logging_config import configure_logging
 
 # Configure logging once at startup
