@@ -1,57 +1,58 @@
-# Node.js
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Logs
-logs/
-*.log
-*.log.*
-
-# OS generated files
-.DS_Store
-Thumbs.db
-
-# IDEs and editors
-.vscode/
-.idea/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-
-# Python
+# Python bytecode / cache
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-.Python
-env/
+*$py.class
+
+# C extensions
+*.so
+
+# Virtual environments
+.venv/
 venv/
 ENV/
+env/
+
+# Packaging / build
+build/
+dist/
 *.egg-info/
 .eggs/
+pip-wheel-metadata/
 
-# Environment variables
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+
+# Type checking / tooling caches
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.hypothesis/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# Local env files / secrets
 .env
+.env.*
 
-# Miscellaneous
-*.swp
-*.bak
-*.tmp
-*.orig
-*.rej
-*.class
-*.jar
-*.war
-*.ear
-*.iml
-*.ipr
-*.iws
-*.class
-*.project
-*.settings/
-*.factorypath
-.clinerules
-/memory-bank
+# IDE/editor
+.vscode/
+.idea/
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Misc
+.python-version
+
