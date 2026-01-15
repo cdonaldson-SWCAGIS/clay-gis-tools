@@ -13,16 +13,13 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 
-# Import analysis modules
-import sys
-import os
-sys.path.append(os.path.abspath("src"))
+from src.analyze_webmap import WebMapAnalyzer, analyze_webmap
+from src.analysis_reports import create_report
 
-from analyze_webmap import WebMapAnalyzer, analyze_webmap
-from analysis_reports import create_report
+from modules.logging_config import get_logger
 
 # Configure logging
-logger = logging.getLogger("webmap_analysis")
+logger = get_logger("webmap_analysis")
 
 def show():
     """Display the Web Map Analysis interface."""
@@ -44,6 +41,15 @@ def show():
     This tool analyzes your web maps to identify optimization opportunities and best practices.
     It checks for performance issues, configuration problems, and provides recommendations.
     """)
+    
+    # Session state cleanup
+    if st.sidebar.button("🗑️ Clear Analysis Results"):
+        if "analysis_results" in st.session_state:
+            del st.session_state["analysis_results"]
+        if "analysis_timestamp" in st.session_state:
+            del st.session_state["analysis_timestamp"]
+        st.sidebar.success("Results cleared!")
+        st.rerun()
     
     # Create tabs
     tab1, tab2, tab3 = st.tabs(["Analyze", "Results", "Help"])

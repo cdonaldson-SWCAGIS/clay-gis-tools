@@ -1,9 +1,9 @@
 import streamlit as st
 import os
-import sys
+from dotenv import load_dotenv
 
-# Add the src directory to the Python path
-sys.path.append(os.path.abspath("src"))
+# Load environment variables from .env file
+load_dotenv()
 
 # App configuration
 st.set_page_config(
@@ -29,6 +29,10 @@ os.makedirs("modules", exist_ok=True)
 
 # Import modules (will be created in subsequent steps)
 from modules import authentication, webmap_filters, webmap_forms, webmap_analysis, settings, clip_by_template_tag
+from modules.logging_config import configure_logging
+
+# Configure logging once at startup
+configure_logging()
 
 # Sidebar navigation
 st.sidebar.title("Clay AGOL Tools")

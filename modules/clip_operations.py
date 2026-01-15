@@ -11,11 +11,12 @@ from arcgis.features import FeatureLayer, FeatureSet
 from arcgis.geometry import Geometry
 from arcgis.geometry.functions import intersect
 
+from modules.logging_config import get_logger
 from .geometry_utils import prepare_template_geometry, validate_geometry, geometry_summary
 from .item_utils import show_operation_status, update_operation_status, complete_operation_status
 
 # Configure logging
-logger = logging.getLogger("clip_operations")
+logger = get_logger("clip_operations")
 
 
 class ClipResult:

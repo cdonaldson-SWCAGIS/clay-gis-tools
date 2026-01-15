@@ -13,13 +13,10 @@ from arcgis.gis import GIS
 from arcgis.features import FeatureLayer
 from arcgis.map import Map
 
+from modules.logging_config import get_logger
+
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
-)
-logger = logging.getLogger("webmap_analysis")
+logger = get_logger("analyze_webmap")
 
 # Reserved keywords that should be avoided in field names
 RESERVED_KEYWORDS = {

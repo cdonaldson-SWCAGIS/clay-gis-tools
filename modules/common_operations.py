@@ -9,8 +9,10 @@ import os
 from typing import Dict, Any, List, Optional, Callable, Union, Tuple
 from arcgis.gis import GIS
 
+from modules.logging_config import get_logger
+
 # Configure logging
-logger = logging.getLogger("common_operations")
+logger = get_logger("common_operations")
 
 
 def ensure_authentication() -> bool:

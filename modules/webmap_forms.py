@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 import logging
 import sys
 import os
@@ -12,6 +13,7 @@ from modules.common_operations import (
     execute_operation_with_status, show_operation_results, show_batch_operation_interface,
     create_help_section, show_tool_header
 )
+from modules.webmap_utils import get_webmap_layer_details, get_all_unique_fields
 
 # Configure logging
 logger = logging.getLogger("webmap_forms")
@@ -19,8 +21,8 @@ logger = logging.getLogger("webmap_forms")
 # Import the patch_webmap_forms module
 try:
     from src import patch_webmap_forms
-except ImportError:
-    st.error("Failed to import patch_webmap_forms module. Make sure the src directory is in your Python path.")
+except ImportError as e:
+    st.error(f"Failed to import patch_webmap_forms module: {e}")
     sys.exit(1)
 
 def show():
@@ -38,12 +40,15 @@ def show():
     )
     
     # Create tabs for different operations
-    tab1, tab2 = st.tabs(["Update Forms", "Batch Operations"])
+    tab1, tab2, tab3 = st.tabs(["Update Forms", "Per-Layer Configuration", "Batch Operations"])
     
     with tab1:
         show_update_forms()
     
     with tab2:
+        show_per_layer_config()
+    
+    with tab3:
         show_batch_operations()
     
     # Show help information
@@ -153,6 +158,285 @@ def show_update_forms():
                 inputs["editable"],
                 debug_mode
             )
+
+def show_per_layer_config():
+    """Display per-layer form configuration interface with table editor"""
+    # Get GIS object
+    gis = get_gis_object()
+    if not gis:
+        return
+    
+    st.markdown("### Per-Layer Form Configuration")
+    st.markdown("Configure form settings individually for each layer in your web map.")
+    
+    # Web map selection using ItemSelector
+    item_selector = ItemSelector(gis, "Web Map", "webmap_forms_perlayer")
+    selected_webmap = item_selector.show(
+        title="Web Map Selection",
+        help_text="Select the web map you want to configure forms for.",
+        default_id=st.session_state.get("webmap_id", "")
+    )
+    
+    if not selected_webmap:
+        st.info("Please select a web map to view its layers.")
+        return
+    
+    # Session state key for layer data
+    layer_data_key = f"form_layer_data_{selected_webmap.id}"
+    
+    # Load layers button
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        load_layers = st.button("Load Layers", type="secondary", use_container_width=True, key="forms_load_layers")
+    
+    # Load or refresh layer data
+    if load_layers or layer_data_key not in st.session_state:
+        with st.spinner("Loading layer details..."):
+            try:
+                layer_details = get_webmap_layer_details(selected_webmap, gis)
+                if layer_details:
+                    # Filter to only layers with formInfo
+                    layers_with_forms = [l for l in layer_details if l.get("has_form_info", False)]
+                    st.session_state[layer_data_key] = layer_details
+                    st.session_state[f"{layer_data_key}_with_forms"] = layers_with_forms
+                    
+                    if layers_with_forms:
+                        st.success(f"Loaded {len(layer_details)} layers ({len(layers_with_forms)} with form configuration).")
+                    else:
+                        st.warning(f"Loaded {len(layer_details)} layers, but none have form configuration.")
+                else:
+                    st.warning("No feature layers found in this web map.")
+                    return
+            except Exception as e:
+                st.error(f"Failed to load layers: {e}")
+                logger.error(f"Error loading layer details: {e}")
+                return
+    
+    # Get layer data from session state
+    layer_details = st.session_state.get(layer_data_key, [])
+    layers_with_forms = st.session_state.get(f"{layer_data_key}_with_forms", [])
+    
+    if not layer_details:
+        st.info("Click 'Load Layers' to fetch the layer list.")
+        return
+    
+    # Option to show all layers or just those with forms
+    show_all = st.checkbox("Show all layers (including those without form configuration)", value=False)
+    display_layers = layer_details if show_all else layers_with_forms
+    
+    if not display_layers:
+        st.warning("No layers to display. Try checking 'Show all layers' above.")
+        return
+    
+    # Get all unique fields across layers
+    all_fields = get_all_unique_fields(layer_details)
+    
+    # Prepare DataFrame for the data editor
+    df_data = []
+    for layer in display_layers:
+        df_data.append({
+            "Apply": False,
+            "Layer Name": layer["name"],
+            "Has Form": layer.get("has_form_info", False),
+            "Field Name": all_fields[0] if all_fields else "",
+            "Expression Name": "expr/set-project-number",
+            "Expression Value": "",
+            "Group Name": "Metadata",
+            "Label": "",
+            "Editable": False,
+            "_url": layer["url"],
+            "_fields": layer["fields"]
+        })
+    
+    df = pd.DataFrame(df_data)
+    
+    # Configure column settings for the data editor
+    column_config = {
+        "Apply": st.column_config.CheckboxColumn(
+            "Apply",
+            help="Check to apply form configuration to this layer",
+            default=False
+        ),
+        "Layer Name": st.column_config.TextColumn(
+            "Layer Name",
+            help="Name of the layer in the web map",
+            disabled=True
+        ),
+        "Has Form": st.column_config.CheckboxColumn(
+            "Has Form",
+            help="Whether the layer has existing form configuration",
+            disabled=True
+        ),
+        "Field Name": st.column_config.SelectboxColumn(
+            "Field Name",
+            help="Field to configure in the form",
+            options=all_fields,
+            required=True
+        ),
+        "Expression Name": st.column_config.TextColumn(
+            "Expression Name",
+            help="Name of the expression (e.g., expr/set-project-number)",
+            width="medium"
+        ),
+        "Expression Value": st.column_config.TextColumn(
+            "Expression Value",
+            help="Value for the expression (leave blank for auto-generated)",
+            width="medium"
+        ),
+        "Group Name": st.column_config.TextColumn(
+            "Group Name",
+            help="Form group to place the field in",
+            width="small"
+        ),
+        "Label": st.column_config.TextColumn(
+            "Label",
+            help="Display label for the field (auto-generated if blank)",
+            width="small"
+        ),
+        "Editable": st.column_config.CheckboxColumn(
+            "Editable",
+            help="Whether the field should be editable by users"
+        ),
+        "_url": None,
+        "_fields": None
+    }
+    
+    # Display the data editor
+    st.markdown("#### Configure Layers")
+    st.caption("Check 'Apply' for layers you want to update, then configure the form settings for each.")
+    
+    edited_df = st.data_editor(
+        df,
+        column_config=column_config,
+        use_container_width=True,
+        hide_index=True,
+        num_rows="fixed",
+        key=f"form_layer_editor_{selected_webmap.id}"
+    )
+    
+    # Debug mode control
+    debug_mode = show_debug_mode_control("webmap_forms_perlayer")
+    
+    # Summary of selected layers
+    selected_count = edited_df["Apply"].sum()
+    st.markdown(f"**Selected layers:** {selected_count}")
+    
+    # Execute button
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        update_button = st.button(
+            "Update Selected Layers",
+            type="primary",
+            use_container_width=True,
+            disabled=selected_count == 0,
+            key="forms_update_btn"
+        )
+    
+    # Handle update request
+    if update_button and selected_count > 0:
+        # Build layer_configs from the edited dataframe
+        layer_configs = {}
+        validation_errors = []
+        
+        for idx, row in edited_df.iterrows():
+            if row["Apply"]:
+                layer_url = row["_url"]
+                field_name = row["Field Name"]
+                expression_name = row["Expression Name"]
+                layer_name = row["Layer Name"]
+                has_form = row["Has Form"]
+                
+                # Validate
+                if not field_name:
+                    validation_errors.append(f"'{layer_name}': Field name is required")
+                    continue
+                if not expression_name:
+                    validation_errors.append(f"'{layer_name}': Expression name is required")
+                    continue
+                if not has_form:
+                    validation_errors.append(f"'{layer_name}': Layer does not have form configuration")
+                    continue
+                
+                # Check if field exists in this layer's fields
+                layer_fields = row["_fields"]
+                if field_name not in layer_fields:
+                    validation_errors.append(f"'{layer_name}': Field '{field_name}' not available in this layer")
+                    continue
+                
+                layer_configs[layer_url] = {
+                    "field_name": field_name,
+                    "expression_name": expression_name,
+                    "expression_value": row["Expression Value"] or None,
+                    "group_name": row["Group Name"] or "Metadata",
+                    "field_label": row["Label"] or None,
+                    "editable": row["Editable"]
+                }
+        
+        if validation_errors:
+            st.error("Validation errors:")
+            for error in validation_errors:
+                st.warning(f"- {error}")
+        elif layer_configs:
+            # Execute the per-layer update
+            execute_per_layer_form_update(
+                selected_webmap.id,
+                layer_configs,
+                gis,
+                debug_mode
+            )
+
+
+def execute_per_layer_form_update(
+    webmap_id: str,
+    layer_configs: Dict[str, Dict[str, Any]],
+    gis,
+    debug_mode: bool
+) -> None:
+    """Execute a per-layer form update with status display"""
+    
+    def update_operation():
+        patch_webmap_forms.DEBUG_MODE = debug_mode
+        return patch_webmap_forms.update_webmap_forms_by_layer_config(
+            webmap_id, layer_configs, gis, debug_mode
+        )
+    
+    # Execute with status display
+    result = execute_operation_with_status(
+        "Per-Layer Form Update",
+        lambda: update_operation(),
+        (),
+        success_message="Successfully updated web map forms",
+        error_message="Failed to update web map forms"
+    )
+    
+    # Show results
+    if result:
+        updated_count = len(result.get("updated_layers", []))
+        skipped_count = len(result.get("skipped_layers", []))
+        error_count = len(result.get("errors", {}))
+        expressions_added = result.get("expressions_added", [])
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Updated", updated_count)
+        with col2:
+            st.metric("Skipped", skipped_count)
+        with col3:
+            st.metric("Errors", error_count)
+        
+        if expressions_added:
+            st.info(f"Expressions added to web map: {', '.join(expressions_added)}")
+        
+        if updated_count > 0:
+            st.success(f"Successfully updated {updated_count} layers")
+            if debug_mode:
+                st.info("Debug mode: Changes were simulated and not saved to the server")
+        
+        if result.get("errors"):
+            with st.expander("Error Details", expanded=True):
+                for layer_url, error_msg in result["errors"].items():
+                    st.error(f"{layer_url}: {error_msg}")
+
 
 def show_batch_operations():
     """Display batch operations interface"""
@@ -601,22 +885,35 @@ def show_help():
         st.markdown("""
         ### Web Map Forms Help
         
-        #### Update Field
-        The Update Field tab allows you to add or update a field in the form configuration of layers in a web map.
+        #### Update Forms Tab
+        Applies the same form configuration to all layers containing a specified field.
         
         - **Field Name**: The name of the field to add/update in forms
-        - **Expression Name**: The name of the expression to use for the field value (e.g., "expr/set-project-number")
+        - **Expression Name**: The expression to use for the field value (e.g., "expr/set-project-number")
         - **Expression Value**: The value for the expression (random if not provided)
-        - **Group Name**: The name of the group to add the field to (e.g., "Metadata")
-        - **Field Label**: The label for the field (derived from field name if not provided)
-        - **Editable**: Whether the field should be editable
+        - **Group Name**: The form group to add the field to (e.g., "Metadata")
+        - **Field Label**: Display label for the field (auto-generated if blank)
+        - **Editable**: Whether the field should be editable by users
         
-        #### Propagate Forms
-        The Propagate Forms tab allows you to copy form element configurations from a source layer to target layers.
+        #### Per-Layer Configuration Tab
+        Configure form settings individually for each layer in your web map.
         
-        - **Source Layer**: The name of the source layer to copy configurations from
-        - **Target Layers**: Optional list of target layer names (if not specified, all layers are considered)
-        - **Fields**: Optional list of field names to propagate (if not specified, all matching fields are propagated)
+        1. Select a web map and click "Load Layers"
+        2. Check the "Apply" box for layers you want to update
+        3. Configure settings for each selected layer:
+           - **Field Name**: Select from available fields
+           - **Expression Name**: The expression to use
+           - **Expression Value**: Optional value (auto-generated if blank)
+           - **Group Name**: Form group to place the field in
+           - **Label**: Display label
+           - **Editable**: Whether users can edit this field
+        4. Click "Update Selected Layers"
+        
+        **Note**: Only layers with existing form configuration can be updated. 
+        Layers marked "Has Form = False" cannot have form settings applied.
+        
+        #### Batch Operations Tab
+        Apply the same form configuration to multiple web maps at once.
         
         #### Debug Mode
         When Debug Mode is enabled, the tool will simulate updates without actually saving changes to the server.
@@ -624,8 +921,7 @@ def show_help():
         
         #### Troubleshooting
         - Ensure your web map ID is correct
-        - Verify that the source layer exists in the web map
-        - Check that the target layers exist in the web map
-        - Verify that the fields exist in the layers
+        - Verify that layers have form configuration (Has Form = True)
+        - Check that the field exists in the target layer
         - Try running in Debug Mode to see more details
         """)

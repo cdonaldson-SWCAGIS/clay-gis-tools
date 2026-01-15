@@ -9,8 +9,12 @@ from typing import List, Optional, Dict, Any, Tuple, Union
 from arcgis.gis import GIS, Item
 from arcgis.features import FeatureLayer
 
+from modules.logging_config import get_logger
+from modules.webmap_utils import get_webmap_item as get_webmap_item_util
+from modules.exceptions import WebMapNotFoundError, InvalidWebMapError
+
 # Configure logging
-logger = logging.getLogger("item_utils")
+logger = get_logger("item_utils")
 
 
 class ItemSelector:
@@ -169,10 +173,32 @@ class ItemSelector:
             
             with col2:
                 if hasattr(item, 'created'):
-                    created_date = item.created.strftime("%Y-%m-%d %H:%M:%S") if item.created else "Unknown"
+                    if item.created:
+                        if isinstance(item.created, (int, float)):
+                            from datetime import datetime
+                            # Assume milliseconds if > 1e10, seconds otherwise
+                            ts = item.created / 1000 if item.created > 1e10 else item.created
+                            created_date = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+                        elif hasattr(item.created, 'strftime'):
+                            created_date = item.created.strftime("%Y-%m-%d %H:%M:%S")
+                        else:
+                            created_date = str(item.created)
+                    else:
+                        created_date = "Unknown"
                     st.write(f"**Created:** {created_date}")
                 if hasattr(item, 'modified'):
-                    modified_date = item.modified.strftime("%Y-%m-%d %H:%M:%S") if item.modified else "Unknown"
+                    if item.modified:
+                        if isinstance(item.modified, (int, float)):
+                            from datetime import datetime
+                            # Assume milliseconds if > 1e10, seconds otherwise
+                            ts = item.modified / 1000 if item.modified > 1e10 else item.modified
+                            modified_date = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+                        elif hasattr(item.modified, 'strftime'):
+                            modified_date = item.modified.strftime("%Y-%m-%d %H:%M:%S")
+                        else:
+                            modified_date = str(item.modified)
+                    else:
+                        modified_date = "Unknown"
                     st.write(f"**Modified:** {modified_date}")
                 if hasattr(item, 'numViews'):
                     st.write(f"**Views:** {item.numViews}")
@@ -192,25 +218,11 @@ def get_webmap_item(gis: GIS, webmap_item_id: str) -> Optional[Item]:
     Returns:
         Web map Item object or None if not found
     """
-    if not webmap_item_id or not isinstance(webmap_item_id, str):
-        logger.error("Invalid webmap_item_id provided")
-        return None
-    
     try:
-        logger.info(f"Retrieving web map with ID: {webmap_item_id}")
-        webmap_item = gis.content.get(webmap_item_id)
-        
-        if not webmap_item:
-            logger.error(f"Web map with ID {webmap_item_id} was not found")
-            return None
-        
-        if webmap_item.type != "Web Map":
-            logger.error(f"Item {webmap_item_id} is not a Web Map (found: {webmap_item.type})")
-            return None
-        
-        logger.debug(f"Successfully retrieved web map: {webmap_item.title}")
-        return webmap_item
-        
+        return get_webmap_item_util(webmap_item_id, gis)
+    except (WebMapNotFoundError, InvalidWebMapError) as e:
+        logger.error(str(e))
+        return None
     except Exception as e:
         logger.error(f"Error retrieving web map: {e}")
         return None

@@ -1,14 +1,9 @@
 import json
-import logging
 import unittest
 from unittest.mock import patch, MagicMock
 
-# Configure logging for tests
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("test_patch_webmap_filters")
-
 # Import the module to test
-from patch_webmap_filters import (
+from src.patch_webmap_filters import (
     update_webmap_definition_by_field,
     capture_layer_state,
     verify_webmap_changes,
@@ -129,9 +124,8 @@ class TestPatchWebmapFilters(unittest.TestCase):
             }
         ]
     
-    @patch('patch_webmap_filters.gis')
-    @patch('patch_webmap_filters.FeatureLayer')
-    def test_capture_layer_state(self, mock_feature_layer_class, mock_gis):
+    @patch('src.patch_webmap_filters.FeatureLayer')
+    def test_capture_layer_state(self, mock_feature_layer_class):
         """Test capture_layer_state function with different layer configurations"""
         # Configure mocks
         mock_gis.return_value = self.mock_gis
@@ -152,9 +146,9 @@ class TestPatchWebmapFilters(unittest.TestCase):
         mock_feature_layer_class.side_effect = lambda url, gis: mock_feature_layers.get(url)
         
         # Mock layer_contains_field to always return True for testing
-        with patch('patch_webmap_filters.layer_contains_field', return_value=True):
+        with patch('src.patch_webmap_filters.layer_contains_field', return_value=True):
             # Call the function
-            result = capture_layer_state(self.test_layers, self.target_field)
+            result = capture_layer_state(self.test_layers, self.target_field, self.mock_gis)
             
             # Verify results
             self.assertEqual(len(result), 8, "Should capture state for all 8 feature layers")
@@ -184,13 +178,11 @@ class TestPatchWebmapFilters(unittest.TestCase):
             self.assertEqual(result["https://services.arcgis.com/layer8"]["definitionExpression"], "status = 'NESTED'", 
                             "Nested layer with layerDefinition should have correct value")
     
-    @patch('patch_webmap_filters.gis')
-    @patch('patch_webmap_filters.FeatureLayer')
-    @patch('patch_webmap_filters.get_webmap_item')
-    def test_update_webmap_definition_by_field(self, mock_get_webmap_item, mock_feature_layer_class, mock_gis):
+    @patch('src.patch_webmap_filters.FeatureLayer')
+    @patch('src.patch_webmap_filters.get_webmap_item')
+    def test_update_webmap_definition_by_field(self, mock_get_webmap_item, mock_feature_layer_class):
         """Test update_webmap_definition_by_field function with different layer configurations"""
         # Configure mocks
-        mock_gis.return_value = self.mock_gis
         mock_get_webmap_item.return_value = self.mock_webmap_item
         
         # Create mock feature layers for each URL
@@ -209,14 +201,15 @@ class TestPatchWebmapFilters(unittest.TestCase):
         mock_feature_layer_class.side_effect = lambda url, gis: mock_feature_layers.get(url)
         
         # Mock layer_contains_field to always return True for testing
-        with patch('patch_webmap_filters.layer_contains_field', return_value=True):
+        with patch('src.patch_webmap_filters.layer_contains_field', return_value=True):
             # Set DEBUG_MODE to True to avoid actual server updates
-            with patch('patch_webmap_filters.DEBUG_MODE', True):
+            with patch('src.patch_webmap_filters.DEBUG_MODE', True):
                 # Call the function
                 result = update_webmap_definition_by_field(
                     self.webmap_item_id, 
                     self.target_field, 
-                    self.new_filter
+                    self.new_filter,
+                    self.mock_gis
                 )
                 
                 # Verify results

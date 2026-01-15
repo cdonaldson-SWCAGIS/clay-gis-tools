@@ -9,8 +9,10 @@ from typing import List, Optional, Dict, Any, Tuple
 from arcgis.gis import GIS, Item
 from arcgis.features import FeatureLayer
 
+from modules.logging_config import get_logger
+
 # Configure logging
-logger = logging.getLogger("tag_management")
+logger = get_logger("tag_management")
 
 
 def parse_tags(tag_string: str) -> List[str]:

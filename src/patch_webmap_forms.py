@@ -8,22 +8,19 @@ from typing import List, Optional, Dict, Any, Union, Tuple
 from arcgis.features import FeatureLayer
 from arcgis.gis import GIS
 
-# Configure standard logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
+from modules.logging_config import get_logger
+from modules.webmap_utils import (
+    get_webmap_item, layer_contains_field, process_webmap_layers,
+    WebMapNotFoundError, InvalidWebMapError, LayerProcessingError
 )
-logger = logging.getLogger("patch_webmap_forms")
+from modules.config import (
+    OPERATIONAL_LAYERS_KEY, FORM_INFO_KEY, FORM_ELEMENTS_KEY,
+    EXPRESSION_INFOS_KEY, URL_KEY, TITLE_KEY, LAYERS_KEY, UNNAMED_LAYER,
+    DEFAULT_GROUP_NAME, EXPR_SYSTEM_FALSE, EXPR_SYSTEM_TRUE
+)
+from modules.exceptions import AuthenticationError
 
-# Get credentials from environment variables with fallback to default values
-# In production, these should be set as environment variables
-username = os.environ.get("ARCGIS_USERNAME", "fdc_admin_swca")
-password = os.environ.get("ARCGIS_PASSWORD", "EarthRouser24")
-profile = os.environ.get("ARCGIS_PROFILE", "FDC_Admin")
-
-# Initialize GIS connection
-gis = GIS(username=username, password=password, profile=profile)
+logger = get_logger("patch_webmap_forms")
 
 # Global debug mode: Set to True to simulate updates (for testing) or False for production.
 DEBUG_MODE = False
@@ -32,35 +29,7 @@ def generate_random_string(length: int = 8) -> str:
     """Generate a random alphanumeric string of specified length."""
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
-def get_webmap_item(webmap_item_id: str) -> Optional[Any]:
-    """Retrieve the web map item using the global gis object."""
-    if not webmap_item_id or not isinstance(webmap_item_id, str):
-        logger.error("Invalid webmap_item_id provided")
-        return None
-        
-    try:
-        logger.info(f"Retrieving web map with ID: {webmap_item_id}")
-        webmap_item = gis.content.get(webmap_item_id)
-        if not webmap_item:
-            logger.error(f"Web map with ID {webmap_item_id} was not found")
-            return None
-        
-        logger.debug(f"Successfully retrieved web map: {webmap_item.title}")
-        return webmap_item
-    except Exception as e:
-        logger.error(f"Error retrieving web map: {e}")
-        return None
-
-def layer_contains_field(feature_layer: FeatureLayer, target_field: str) -> bool:
-    """Check if the feature layer contains the target field."""
-    if not feature_layer or not target_field:
-        return False
-        
-    try:
-        fields = feature_layer.properties.fields
-        return any(field.get("name") == target_field for field in fields)
-    except Exception:
-        return False
+# get_webmap_item and layer_contains_field are now imported from modules.webmap_utils
 
 def has_expression_info(webmap_data: Dict, expression_name: str) -> bool:
     """Check if the web map already has the specified expression info."""
@@ -327,41 +296,15 @@ def find_layer_by_name(layers: List[Dict], layer_name: str) -> Optional[Tuple[Di
     Returns:
         Optional[Tuple[Dict, List[str]]]: A tuple containing the layer and its path if found, otherwise None
     """
-    # Process all layers including nested ones
-    layers_to_process = []
-    
-    # Initialize the processing queue with top-level layers
-    for layer in layers:
-        # Add metadata to track layer path
-        layer_copy = layer.copy()
-        layer_copy["_path_prefix"] = []
-        layers_to_process.append(layer_copy)
-    
-    while layers_to_process:
-        layer = layers_to_process.pop(0)
-        layer_title = layer.get("title", "Unnamed Layer")
-        
-        # Get the path prefix for this layer
-        path_prefix = layer.get("_path_prefix", [])
+    # Process all layers including nested ones using the shared utility
+    # We wrap the layers list in a dictionary to match the expected structure
+    for layer, path_prefix in process_webmap_layers({OPERATIONAL_LAYERS_KEY: layers}, include_path=True):
+        layer_title = layer.get(TITLE_KEY, UNNAMED_LAYER)
         
         # Check if this is the target layer
         if layer_title == layer_name:
             logger.info(f"Found layer '{layer_name}' at path: {'/'.join(path_prefix) if path_prefix else 'root'}")
             return (layer, path_prefix)
-        
-        # Add nested layers to processing queue with updated path prefix
-        if "layers" in layer and isinstance(layer["layers"], list):
-            # Create a new path prefix for child layers
-            new_prefix = path_prefix + [layer_title]
-            
-            # Add child layers to the processing queue with the current layer as prefix
-            for child_layer in layer["layers"]:
-                # Clone the child layer to avoid modifying the original
-                child_layer_copy = child_layer.copy()
-                # Store the path prefix with the layer for later use
-                child_layer_copy["_path_prefix"] = new_prefix
-                # We'll process these layers next, with the current layer as part of their path
-                layers_to_process.append(child_layer_copy)
     
     logger.warning(f"Layer '{layer_name}' not found in the web map")
     return None
@@ -521,10 +464,11 @@ def update_layer_form_info(layer: Dict, feature_layer: FeatureLayer, field_name:
 
 def update_webmap_forms(
     webmap_item_id: str,
+    gis: GIS,
     field_name: str = "project_number",
     expression_name: str = "expr/set-project-number",
     expression_value: Optional[str] = None,
-    group_name: str = "Metadata",
+    group_name: str = DEFAULT_GROUP_NAME,
     field_label: Optional[str] = None,
     editable: bool = False
 ) -> List[str]:
@@ -533,6 +477,7 @@ def update_webmap_forms(
     
     Args:
         webmap_item_id: The ID of the web map to update
+        gis: The authenticated GIS object
         field_name: The name of the field to add/update
         expression_name: The name of the expression to use
         expression_value: The value for the expression (random if not provided)
@@ -557,15 +502,17 @@ def update_webmap_forms(
         return []
     
     # Retrieve the web map item
-    webmap_item = get_webmap_item(webmap_item_id)
-    if not webmap_item:
+    try:
+        webmap_item = get_webmap_item(webmap_item_id, gis)
+    except (WebMapNotFoundError, InvalidWebMapError) as e:
+        logger.error(str(e))
         return []
     
     try:
         # Get the web map data (JSON)
         webmap_data = webmap_item.get_data()
         
-        if "operationalLayers" not in webmap_data:
+        if OPERATIONAL_LAYERS_KEY not in webmap_data:
             logger.warning("No operational layers found in the webmap data")
             return []
         
@@ -574,47 +521,17 @@ def update_webmap_forms(
         
         # Process all layers including nested ones
         updated_layers = []
-        layers_to_process = []
         
-        # Initialize the processing queue with top-level layers
-        for layer in webmap_data["operationalLayers"]:
-            # Add metadata to track layer path
-            layer["_path_prefix"] = []
-            layers_to_process.append(layer)
-        
-        while layers_to_process:
-            layer = layers_to_process.pop(0)
-            layer_title = layer.get("title", "Unnamed Layer")
-            
-            # Get the path prefix for this layer
-            path_prefix = layer.get("_path_prefix", [])
+        for layer, path_prefix in process_webmap_layers(webmap_data, include_path=True):
+            layer_title = layer.get(TITLE_KEY, UNNAMED_LAYER)
             
             # Log the current layer being processed with its full path
             current_path = "/".join(path_prefix + [layer_title]) if path_prefix else layer_title
             logger.info(f"Processing layer: {current_path}")
             
-            # Add nested layers to processing queue with updated path prefix
-            if "layers" in layer and isinstance(layer["layers"], list):
-                logger.info(f"Found group layer '{layer_title}' with {len(layer['layers'])} child layers")
-                
-                # Create a new path prefix for child layers
-                new_prefix = path_prefix + [layer_title]
-                
-                # Add child layers to the processing queue with the current layer as prefix
-                for child_layer in reversed(layer["layers"]):
-                    # Clone the child layer to avoid modifying the original
-                    child_layer_copy = child_layer.copy()
-                    # Store the path prefix with the layer for later use
-                    child_layer_copy["_path_prefix"] = new_prefix
-                    # We'll process these layers next, with the current layer as part of their path
-                    layers_to_process.insert(0, child_layer_copy)
-                
-                # Continue to the next layer in the queue
-                continue
-            
             # Process feature layers with URLs
-            if "url" in layer:
-                layer_url = layer["url"]
+            if URL_KEY in layer:
+                layer_url = layer[URL_KEY]
                 
                 try:
                     # Create a FeatureLayer to examine its fields
@@ -634,7 +551,7 @@ def update_webmap_forms(
                 except Exception as e:
                     logger.error(f"Error processing layer '{layer_title}': {str(e)}")
             else:
-                logger.info(f"Layer '{layer_title}' does not have a URL, skipping")
+                logger.debug(f"Layer '{layer_title}' does not have a URL, skipping")
         
         logger.info(f"Updated {len(updated_layers)} layers in total")
         
@@ -737,6 +654,7 @@ def apply_form_elements_to_layer(
 def propagate_form_elements(
     webmap_item_id: str,
     source_layer_name: str,
+    gis: GIS,
     target_layer_names: Optional[List[str]] = None,
     field_names: Optional[List[str]] = None
 ) -> Dict[str, List[str]]:
@@ -746,6 +664,7 @@ def propagate_form_elements(
     Args:
         webmap_item_id: The ID of the web map
         source_layer_name: The name of the source layer to copy configurations from
+        gis: The authenticated GIS object
         target_layer_names: Optional list of target layer names (if None, all layers are considered)
         field_names: Optional list of field names to propagate (if None, all matching fields are propagated)
         
@@ -765,20 +684,22 @@ def propagate_form_elements(
         return {}
     
     # Retrieve the web map item
-    webmap_item = get_webmap_item(webmap_item_id)
-    if not webmap_item:
+    try:
+        webmap_item = get_webmap_item(webmap_item_id, gis)
+    except (WebMapNotFoundError, InvalidWebMapError) as e:
+        logger.error(str(e))
         return {}
     
     try:
         # Get the web map data (JSON)
         webmap_data = webmap_item.get_data()
         
-        if "operationalLayers" not in webmap_data:
+        if OPERATIONAL_LAYERS_KEY not in webmap_data:
             logger.warning("No operational layers found in the webmap data")
             return {}
         
         # Find the source layer
-        source_layer_result = find_layer_by_name(webmap_data["operationalLayers"], source_layer_name)
+        source_layer_result = find_layer_by_name(webmap_data[OPERATIONAL_LAYERS_KEY], source_layer_name)
         if not source_layer_result:
             logger.error(f"Source layer '{source_layer_name}' not found in the web map")
             return {}
@@ -786,13 +707,13 @@ def propagate_form_elements(
         source_layer, source_path = source_layer_result
         
         # Check if the source layer has a URL
-        if "url" not in source_layer:
+        if URL_KEY not in source_layer:
             logger.error(f"Source layer '{source_layer_name}' does not have a URL")
             return {}
         
         # Create a FeatureLayer for the source layer
         try:
-            source_feature_layer = FeatureLayer(source_layer["url"], gis=gis)
+            source_feature_layer = FeatureLayer(source_layer[URL_KEY], gis=gis)
         except Exception as e:
             logger.error(f"Error creating FeatureLayer for source layer: {str(e)}")
             return {}
@@ -810,17 +731,9 @@ def propagate_form_elements(
         
         # Process all layers including nested ones
         updated_layers = {}
-        layers_to_process = []
         
-        # Initialize the processing queue with top-level layers
-        for layer in webmap_data["operationalLayers"]:
-            # Add metadata to track layer path
-            layer["_path_prefix"] = []
-            layers_to_process.append(layer)
-        
-        while layers_to_process:
-            layer = layers_to_process.pop(0)
-            layer_title = layer.get("title", "Unnamed Layer")
+        for layer, path_prefix in process_webmap_layers(webmap_data, include_path=True):
+            layer_title = layer.get(TITLE_KEY, UNNAMED_LAYER)
             
             # Skip the source layer
             if layer_title == source_layer_name:
@@ -829,56 +742,18 @@ def propagate_form_elements(
             
             # Skip if target_layer_names is provided and this layer is not in the list
             if target_layer_names and layer_title not in target_layer_names:
-                logger.info(f"Layer '{layer_title}' not in target layers list, skipping")
-                
-                # Still need to process child layers
-                if "layers" in layer and isinstance(layer["layers"], list):
-                    # Get the path prefix for this layer
-                    path_prefix = layer.get("_path_prefix", [])
-                    
-                    # Create a new path prefix for child layers
-                    new_prefix = path_prefix + [layer_title]
-                    
-                    # Add child layers to the processing queue with the current layer as prefix
-                    for child_layer in layer["layers"]:
-                        # Clone the child layer to avoid modifying the original
-                        child_layer_copy = child_layer.copy()
-                        # Store the path prefix with the layer for later use
-                        child_layer_copy["_path_prefix"] = new_prefix
-                        # We'll process these layers next, with the current layer as part of their path
-                        layers_to_process.append(child_layer_copy)
-                
+                # Still need to process child layers (which is handled by process_webmap_layers)
+                # But here we just skip processing this specific layer
+                logger.debug(f"Layer '{layer_title}' not in target layers list, skipping")
                 continue
-            
-            # Get the path prefix for this layer
-            path_prefix = layer.get("_path_prefix", [])
             
             # Log the current layer being processed with its full path
             current_path = "/".join(path_prefix + [layer_title]) if path_prefix else layer_title
             logger.info(f"Processing layer: {current_path}")
             
-            # Add nested layers to processing queue with updated path prefix
-            if "layers" in layer and isinstance(layer["layers"], list):
-                logger.info(f"Found group layer '{layer_title}' with {len(layer['layers'])} child layers")
-                
-                # Create a new path prefix for child layers
-                new_prefix = path_prefix + [layer_title]
-                
-                # Add child layers to the processing queue with the current layer as prefix
-                for child_layer in layer["layers"]:
-                    # Clone the child layer to avoid modifying the original
-                    child_layer_copy = child_layer.copy()
-                    # Store the path prefix with the layer for later use
-                    child_layer_copy["_path_prefix"] = new_prefix
-                    # We'll process these layers next, with the current layer as part of their path
-                    layers_to_process.append(child_layer_copy)
-                
-                # Continue to the next layer in the queue
-                continue
-            
             # Process feature layers with URLs
-            if "url" in layer:
-                layer_url = layer["url"]
+            if URL_KEY in layer:
+                layer_url = layer[URL_KEY]
                 
                 try:
                     # Create a FeatureLayer to examine its fields
@@ -897,7 +772,7 @@ def propagate_form_elements(
                 except Exception as e:
                     logger.error(f"Error processing layer '{layer_title}': {str(e)}")
             else:
-                logger.info(f"Layer '{layer_title}' does not have a URL, skipping")
+                logger.debug(f"Layer '{layer_title}' does not have a URL, skipping")
         
         logger.info(f"Updated {len(updated_layers)} layers in total")
         
@@ -923,7 +798,186 @@ def propagate_form_elements(
         logger.error(f"Error in propagation process: {e}")
         return {}
 
+def update_webmap_forms_by_layer_config(
+    webmap_item_id: str,
+    layer_configs: Dict[str, Dict[str, Any]],
+    gis: GIS,
+    debug_mode: bool = False
+) -> Dict[str, Any]:
+    """
+    Update form configurations for specific layers using per-layer configuration.
+    
+    Args:
+        webmap_item_id: The ID of the web map to update
+        layer_configs: Dictionary mapping layer URLs to their configuration:
+            {
+                "layer_url": {
+                    "field_name": "field to configure in the form",
+                    "expression_name": "expr/my-expression",
+                    "expression_value": "optional value for expression",
+                    "group_name": "Metadata",
+                    "field_label": "Optional Label",
+                    "editable": False
+                }
+            }
+        gis: The authenticated GIS object
+        debug_mode: Whether to simulate updates without saving
+        
+    Returns:
+        Dictionary with results:
+            {
+                "updated_layers": List of layer URLs that were updated,
+                "skipped_layers": List of layer URLs skipped (no formInfo or field),
+                "errors": Dict mapping layer URLs to error messages,
+                "expressions_added": List of expression names added
+            }
+    """
+    logger.info(f"Starting per-layer form update process for web map {webmap_item_id}")
+    logger.info(f"Processing {len(layer_configs)} layer configurations")
+    
+    result = {
+        "updated_layers": [],
+        "skipped_layers": [],
+        "errors": {},
+        "expressions_added": []
+    }
+    
+    # Input validation
+    if not webmap_item_id:
+        logger.error("Missing webmap_item_id")
+        return result
+    
+    if not layer_configs:
+        logger.warning("No layer configurations provided")
+        return result
+    
+    # Retrieve the web map item
+    try:
+        webmap_item = get_webmap_item(webmap_item_id, gis)
+    except (WebMapNotFoundError, InvalidWebMapError) as e:
+        logger.error(str(e))
+        raise
+    
+    try:
+        # Get the web map data (JSON)
+        webmap_data = webmap_item.get_data()
+        
+        if OPERATIONAL_LAYERS_KEY not in webmap_data:
+            logger.warning("No operational layers found in the webmap data")
+            return result
+        
+        # Collect all unique expressions needed
+        expressions_to_add = set()
+        for config in layer_configs.values():
+            expr_name = config.get("expression_name", "")
+            if expr_name:
+                expressions_to_add.add(expr_name)
+        
+        # Add all required expressions to the web map
+        for expr_name in expressions_to_add:
+            # Find expression value from any config that uses this expression
+            expr_value = None
+            for config in layer_configs.values():
+                if config.get("expression_name") == expr_name:
+                    expr_value = config.get("expression_value")
+                    break
+            
+            if add_custom_expression(webmap_data, expr_name, expr_value):
+                result["expressions_added"].append(expr_name)
+        
+        # Process all layers including nested ones
+        for layer, _ in process_webmap_layers(webmap_data):
+            # Process feature layers with URLs
+            if URL_KEY not in layer:
+                continue
+                
+            layer_url = layer[URL_KEY]
+            layer_title = layer.get(TITLE_KEY, UNNAMED_LAYER)
+            
+            # Check if this layer is in our config
+            if layer_url not in layer_configs:
+                continue
+            
+            config = layer_configs[layer_url]
+            field_name = config.get("field_name", "")
+            expression_name = config.get("expression_name", "")
+            group_name = config.get("group_name", DEFAULT_GROUP_NAME)
+            field_label = config.get("field_label")
+            editable = config.get("editable", False)
+            
+            if not field_name:
+                logger.warning(f"Incomplete config for layer '{layer_title}': missing field_name")
+                result["errors"][layer_url] = "Missing field_name in configuration"
+                continue
+            
+            if not expression_name:
+                logger.warning(f"Incomplete config for layer '{layer_title}': missing expression_name")
+                result["errors"][layer_url] = "Missing expression_name in configuration"
+                continue
+            
+            # Check if layer has formInfo
+            if "formInfo" not in layer:
+                logger.info(f"Layer '{layer_title}' does not have formInfo, skipping")
+                result["skipped_layers"].append(layer_url)
+                continue
+            
+            try:
+                # Create a FeatureLayer to examine its fields
+                feature_layer = FeatureLayer(layer_url, gis=gis)
+                
+                if not layer_contains_field(feature_layer, field_name):
+                    logger.warning(f"Layer '{layer_title}' does not contain field '{field_name}'")
+                    result["skipped_layers"].append(layer_url)
+                    continue
+                
+                # Update the layer's formInfo
+                if update_layer_form_info(
+                    layer,
+                    feature_layer,
+                    field_name,
+                    expression_name,
+                    group_name,
+                    field_label,
+                    editable
+                ):
+                    logger.info(f"Updated form for layer '{layer_title}' on field '{field_name}'")
+                    result["updated_layers"].append(layer_url)
+                else:
+                    result["skipped_layers"].append(layer_url)
+                    
+            except Exception as e:
+                logger.error(f"Error processing layer '{layer_title}': {str(e)}")
+                result["errors"][layer_url] = str(e)
+        
+        logger.info(f"Updated {len(result['updated_layers'])} layers, skipped {len(result['skipped_layers'])}, errors: {len(result['errors'])}")
+        
+        # Save the changes to the web map
+        if debug_mode or DEBUG_MODE:
+            logger.info("DEBUG MODE: Webmap update simulated. Changes not saved to the server.")
+            return result
+        else:
+            try:
+                logger.info("Saving changes to web map...")
+                update_result = webmap_item.update(data=webmap_data)
+                
+                if update_result:
+                    logger.info("Webmap item update operation completed successfully")
+                    return result
+                else:
+                    logger.error("Failed to update webmap item")
+                    result["errors"]["_save"] = "Failed to save changes to web map"
+                    return result
+            except Exception as e:
+                logger.error(f"Error updating webmap item: {e}")
+                result["errors"]["_save"] = str(e)
+                return result
+    except Exception as e:
+        logger.error(f"Error in update process: {e}")
+        raise LayerProcessingError(f"Error in update process: {e}") from e
+
+
 def test_propagate_form_elements(
+    gis: GIS,
     webmap_item_id: str = "d1ea52f5280d4d57b5e331d21e00296e",
     source_layer_name: str = "Artifact Point",
     target_layer_names: Optional[List[str]] = None,
@@ -933,6 +987,7 @@ def test_propagate_form_elements(
     Test function to demonstrate propagating form elements from a source layer to target layers.
     
     Args:
+        gis: The authenticated GIS object
         webmap_item_id: The ID of the web map
         source_layer_name: The name of the source layer to copy configurations from
         target_layer_names: Optional list of target layer names (if None, all layers are considered)
@@ -953,6 +1008,7 @@ def test_propagate_form_elements(
     updated_layers = propagate_form_elements(
         webmap_item_id,
         source_layer_name,
+        gis,
         target_layer_names,
         field_names
     )
@@ -969,11 +1025,12 @@ def test_propagate_form_elements(
     return updated_layers
 
 def test_webmap_forms_update(
+    gis: GIS,
     webmap_item_id: str = "d1ea52f5280d4d57b5e331d21e00296e",
     field_name: str = "project_number",
     expression_name: str = "expr/set-project-number",
     expression_value: Optional[str] = None,
-    group_name: str = "Metadata",
+    group_name: str = DEFAULT_GROUP_NAME,
     field_label: Optional[str] = None,
     editable: bool = False
 ):
@@ -981,6 +1038,7 @@ def test_webmap_forms_update(
     Test function to demonstrate updating a web map's forms.
     
     Args:
+        gis: The authenticated GIS object
         webmap_item_id: The ID of the web map to update
         field_name: The name of the field to add/update
         expression_name: The name of the expression to use
@@ -1001,6 +1059,7 @@ def test_webmap_forms_update(
     # Perform the update
     updated_layers = update_webmap_forms(
         webmap_item_id,
+        gis,
         field_name,
         expression_name,
         expression_value,
@@ -1020,6 +1079,7 @@ def test_webmap_forms_update(
 
 if __name__ == "__main__":
     import argparse
+    from modules.authentication import authenticate_from_env
     
     # Create main argument parser
     parser = argparse.ArgumentParser(description="Utilities for updating form elements in ArcGIS web maps")
@@ -1034,7 +1094,7 @@ if __name__ == "__main__":
     update_parser.add_argument("--field", default="project_number", help="Field name to add/update")
     update_parser.add_argument("--expression", default="expr/set-project-number", help="Expression name")
     update_parser.add_argument("--value", help="Expression value (random if not provided)")
-    update_parser.add_argument("--group", default="Metadata", help="Group name for the field")
+    update_parser.add_argument("--group", default=DEFAULT_GROUP_NAME, help="Group name for the field")
     update_parser.add_argument("--label", help="Field label (derived from field name if not provided)")
     update_parser.add_argument("--editable", action="store_true", help="Make the field editable")
     
@@ -1056,10 +1116,19 @@ if __name__ == "__main__":
         logger.setLevel(logging.DEBUG)
         logger.debug("Debug logging enabled")
     
+    # Get GIS connection - require environment variables
+    try:
+        gis = authenticate_from_env()
+    except (ValueError, AuthenticationError) as e:
+        logger.error(f"Authentication failed: {e}")
+        logger.error("Please set ARCGIS_USERNAME, ARCGIS_PASSWORD, and optionally ARCGIS_PROFILE environment variables")
+        sys.exit(1)
+    
     # Execute the appropriate command
     if args.command == "update":
         # Run the update function with provided arguments
         updated = test_webmap_forms_update(
+            gis,
             args.webmap_id,
             args.field,
             args.expression,
@@ -1098,6 +1167,7 @@ if __name__ == "__main__":
         
         # Run the propagate function with provided arguments
         updated_layers = test_propagate_form_elements(
+            gis,
             args.webmap_id,
             args.source,
             target_layer_names,
