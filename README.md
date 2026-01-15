@@ -227,6 +227,11 @@ Debug mode allows you to test operations without making actual changes to ArcGIS
 
 When debug mode is enabled, operations are simulated and logged but not saved to the server.
 
+### Testing maps
+
+- `eb50014bde1b461aae56068ebee86eea`
+
+
 ### Development Guidelines
 
 - Follow PEP 8 style guidelines
