@@ -422,7 +422,7 @@ def create_help_section(
 
 def show_tool_header(
     title: str,
-    description: str,
+    description: str = "",
     icon: str = None
 ) -> None:
     """
@@ -430,7 +430,7 @@ def show_tool_header(
     
     Args:
         title: Title of the tool
-        description: Description of what the tool does
+        description: Brief description of what the tool does
         icon: Optional icon to display
     """
     if icon:
@@ -438,11 +438,8 @@ def show_tool_header(
     else:
         st.title(title)
     
-    st.markdown(f"""
-    ## {title}
-    
-    {description}
-    """)
+    if description:
+        st.caption(description)
 
 
 def get_environment_setting(

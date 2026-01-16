@@ -15,7 +15,7 @@ if str(project_root) not in sys.path:
 
 from frontend.components.item_selector import ItemSelector, get_webmap_item
 from frontend.components.common_operations import (
-    ensure_authentication, get_gis_object, show_debug_mode_control,
+    ensure_authentication, get_gis_object,
     execute_operation_with_status, show_tool_header, get_environment_setting
 )
 from backend.core.webmap.utils import get_webmap_layer_details
@@ -72,8 +72,7 @@ def show():
     # Show tool header
     show_tool_header(
         "Web Map Forms",
-        "Set default values for form fields across multiple layers. Select a field, enter a value, and apply to all selected layers.",
-        ""
+        "Set default form field values for layers."
     )
     
     # Show per-layer configuration interface
@@ -90,14 +89,10 @@ def show_per_layer_config():
     if not gis:
         return
     
-    st.markdown("### Set Default Values")
-    st.markdown("Configure default form values for each layer. Different layers can use different field names.")
-    
     # Web map selection using ItemSelector
     item_selector = ItemSelector(gis, "Web Map", "webmap_forms_perlayer")
     selected_webmap = item_selector.show(
-        title="Web Map Selection",
-        help_text="Select the web map you want to configure forms for.",
+        title="Select Web Map",
         default_id=st.session_state.get("webmap_id", "")
     )
     
@@ -143,12 +138,12 @@ def show_per_layer_config():
         st.info("Click 'Load Layers' to fetch the layer list.")
         return
     
-    # Option to show all layers or just those with forms
-    show_all = st.checkbox("Show all layers (including those without form configuration)", value=False)
+    # Option to show all layers or just those with forms (default: show all)
+    show_all = st.checkbox("Show all layers", value=True, help="Uncheck to hide layers without form configuration")
     display_layers = layer_details if show_all else layers_with_forms
     
     if not display_layers:
-        st.warning("No layers to display. Try checking 'Show all layers' above.")
+        st.warning("No layers with form configuration. Enable 'Show all layers' to see all.")
         return
     
     # Prepare DataFrame for the data editor (simplified: only Apply, Layer Name, Field, Default Value)
@@ -174,9 +169,8 @@ def show_per_layer_config():
     
     df = pd.DataFrame(df_data)
     
-    # Configure AgGrid columns (simplified UI)
-    st.markdown("#### Configure Layers")
-    st.caption("Check 'Apply' for layers you want to update, select the field, and enter the default value.")
+    # Configure AgGrid columns
+    st.subheader("Layers")
     
     # Build grid options using GridOptionsBuilder
     gb = GridOptionsBuilder.from_dataframe(df)
@@ -287,42 +281,39 @@ def show_per_layer_config():
     # Get edited data from grid response
     edited_df = grid_response["data"]
     
-    # Debug mode control
-    debug_mode = show_debug_mode_control("webmap_forms_perlayer")
+    # Get debug mode from global settings
+    debug_mode = st.session_state.get("debug_mode", True)
     
     # Summary of selected layers
     selected_count = edited_df["Apply"].sum()
     st.markdown(f"**Selected layers:** {selected_count}")
     
-    # Operation mode selection (at the end, before execution)
-    st.markdown("---")
+    # Operation mode selection
+    st.divider()
     operation_mode = st.radio(
-        "Apply Changes To",
-        ["Update Webmap Layer(s)", "Save as New Webmap"],
+        "Save To",
+        ["Update Existing", "Save as Copy"],
         horizontal=True,
-        help="Choose whether to update the existing webmap or create a new copy with these changes",
         key="forms_operation_mode"
     )
     
-    # If "Save as New Webmap", show title input
+    # If "Save as Copy", show title input
     new_title = None
-    if operation_mode == "Save as New Webmap":
+    if operation_mode == "Save as Copy":
         map_suffix = get_environment_setting("MAP_SUFFIX", "_Copy")
         default_title = f"{selected_webmap.title}{map_suffix}"
         new_title = st.text_input(
-            "New Web Map Title",
+            "New Title",
             value=default_title,
-            help=f"Default: <Original Title>{map_suffix}. You can customize this title.",
             key="forms_new_title"
         )
         if not new_title:
             new_title = default_title
-        st.info(f"**Preview:** The new web map will be titled: **{new_title}**")
     
     # Execute button
     col1, col2 = st.columns([1, 3])
     with col1:
-        button_text = "Save as New Web Map" if operation_mode == "Save as New Webmap" else "Update Selected Layers"
+        button_text = "Save Copy" if operation_mode == "Save as Copy" else "Apply Changes"
         update_button = st.button(
             button_text,
             type="primary",
@@ -383,7 +374,7 @@ def show_per_layer_config():
                 st.warning(f"- {error}")
         elif layer_field_values:
             # Execute the per-layer update or save as new using simplified function
-            if operation_mode == "Save as New Webmap":
+            if operation_mode == "Save as Copy":
                 execute_per_layer_form_update_as_new(
                     selected_webmap.id,
                     layer_field_values,
@@ -554,40 +545,21 @@ def execute_per_layer_form_update(
 
 def show_help():
     """Display help information for the Web Map Forms tool"""
-    with st.expander("Need Help?"):
+    with st.expander("Help"):
         st.markdown("""
-        ### Web Map Forms Help
-        
-        #### Setting Default Values for Form Fields
-        This tool sets the default value that appears when users create or edit features.
-        
-        **Quick Start:**
+        **Quick Start**
         1. Select a web map and click "Load Layers"
-        2. Check the "Apply" box for layers you want to update
-        3. Select the **Field** for each layer (different layers can have different field names)
-        4. Enter the **Default Value** for each layer
-        5. Click "Update Selected Layers"
+        2. Check "Apply" for layers to update
+        3. Select field and enter default value
+        4. Click "Apply Changes"
         
-        #### Different Field Names Per Layer
-        Some layers may have slightly different field names (e.g., `project_number` vs `parent_project_number`).
-        The Field dropdown shows available fields for each layer, so you can select the correct one.
+        **Notes**
+        - Only layers with "Has Form = True" can be updated
+        - Different layers can use different field names
+        - The field dropdown shows available fields per layer
         
-        #### Save as New Webmap Option
-        Create a copy of the web map with the form changes applied:
-        - Select "Save as New Webmap" before clicking update
-        - Customize the title for the new web map
-        - The original web map remains unchanged
-        
-        #### What Gets Auto-Generated
-        The tool automatically generates these technical settings:
-        - Expression name (from field name)
-        - Display label (from field name)
-        - Form group placement ("Metadata")
-        
-        #### Requirements
-        - Only layers with existing form configuration can be updated (Has Form = True)
-        - The field must exist in the layer's schema
-        
-        #### Debug Mode
-        Enable Debug Mode to simulate updates without saving changes to the server.
+        **Save as Copy**
+        - Creates a new web map with your changes
+        - Original remains unchanged
+        - Configure default suffix in Settings
         """)

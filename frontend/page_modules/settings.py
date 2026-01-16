@@ -14,13 +14,15 @@ def show():
     # General Settings
     st.subheader("General")
     
-    # Debug mode
+    # Debug mode (global setting for all tools)
     debug_mode = st.checkbox(
         "Debug Mode",
         value=st.session_state.get("debug_mode", True),
-        help="When enabled, operations will be simulated without making actual changes"
+        help="Simulate changes without saving. Applies to all tools."
     )
     st.session_state.debug_mode = debug_mode
+    if debug_mode:
+        st.caption("Changes will be simulated but not saved to the server.")
     
     # Logging level
     log_levels = {
@@ -50,7 +52,7 @@ def show():
     map_suffix = st.text_input(
         "Map Suffix",
         value=current_map_suffix,
-        help="Suffix appended to copied web map titles when using 'Save as New'",
+        help="Suffix appended to web map titles when using 'Save as Copy'",
         key="map_suffix_input"
     )
     st.session_state.map_suffix = map_suffix

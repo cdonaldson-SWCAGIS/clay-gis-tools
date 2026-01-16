@@ -14,7 +14,7 @@ if str(project_root) not in sys.path:
 
 from frontend.components.item_selector import ItemSelector, get_webmap_item
 from frontend.components.common_operations import (
-    ensure_authentication, get_gis_object, show_debug_mode_control,
+    ensure_authentication, get_gis_object,
     execute_operation_with_status, show_tool_header, get_environment_setting
 )
 from backend.core.webmap.utils import get_webmap_layer_details
@@ -70,8 +70,7 @@ def show():
     # Show tool header
     show_tool_header(
         "Web Map Filters",
-        "This tool allows you to configure definition expressions (filters) individually for each layer in your ArcGIS web maps.",
-        ""
+        "Configure definition expressions (filters) for web map layers."
     )
     
     # Show per-layer configuration interface
@@ -143,14 +142,10 @@ def show_per_layer_config():
     if not gis:
         return
     
-    st.markdown("### Per-Layer Filter Configuration")
-    st.markdown("Configure filters individually for each layer in your web map.")
-    
     # Web map selection using ItemSelector
     item_selector = ItemSelector(gis, "Web Map", "webmap_filters_perlayer")
     selected_webmap = item_selector.show(
-        title="Web Map Selection",
-        help_text="Select the web map you want to configure filters for.",
+        title="Select Web Map",
         default_id=st.session_state.get("webmap_id", "")
     )
     
@@ -219,8 +214,7 @@ def show_per_layer_config():
     df = pd.DataFrame(df_data)
     
     # Configure AgGrid columns
-    st.markdown("#### Configure Layers")
-    st.caption("Check 'Apply' for layers you want to update, then set the target field, operator, and value for each.")
+    st.subheader("Layers")
     
     # Build grid options using GridOptionsBuilder
     gb = GridOptionsBuilder.from_dataframe(df)
@@ -343,42 +337,39 @@ def show_per_layer_config():
     # Get edited data from grid response
     edited_df = grid_response["data"]
     
-    # Debug mode control
-    debug_mode = show_debug_mode_control("webmap_filters_perlayer")
+    # Get debug mode from global settings
+    debug_mode = st.session_state.get("debug_mode", True)
     
     # Summary of selected layers
     selected_count = edited_df["Apply"].sum()
     st.markdown(f"**Selected layers:** {selected_count}")
     
-    # Operation mode selection (at the end, before execution)
-    st.markdown("---")
+    # Operation mode selection
+    st.divider()
     operation_mode = st.radio(
-        "Apply Changes To",
-        ["Update Webmap Layer(s)", "Save as New Webmap"],
+        "Save To",
+        ["Update Existing", "Save as Copy"],
         horizontal=True,
-        help="Choose whether to update the existing webmap or create a new copy with these changes",
         key="filters_operation_mode"
     )
     
-    # If "Save as New Webmap", show title input
+    # If "Save as Copy", show title input
     new_title = None
-    if operation_mode == "Save as New Webmap":
+    if operation_mode == "Save as Copy":
         map_suffix = get_environment_setting("MAP_SUFFIX", "_Copy")
         default_title = f"{selected_webmap.title}{map_suffix}"
         new_title = st.text_input(
-            "New Web Map Title",
+            "New Title",
             value=default_title,
-            help=f"Default: <Original Title>{map_suffix}. You can customize this title.",
             key="filters_new_title"
         )
         if not new_title:
             new_title = default_title
-        st.info(f"**Preview:** The new web map will be titled: **{new_title}**")
     
     # Execute button
     col1, col2 = st.columns([1, 3])
     with col1:
-        button_text = "Save as New Web Map" if operation_mode == "Save as New Webmap" else "Update Selected Layers"
+        button_text = "Save Copy" if operation_mode == "Save as Copy" else "Apply Changes"
         update_button = st.button(
             button_text,
             type="primary",
@@ -441,7 +432,7 @@ def show_per_layer_config():
                 st.warning(f"- {error}")
         elif layer_configs:
             # Execute the per-layer update or save as new
-            if operation_mode == "Save as New Webmap":
+            if operation_mode == "Save as Copy":
                 execute_per_layer_filter_update_as_new(
                     selected_webmap.id,
                     layer_configs,
@@ -646,8 +637,8 @@ def show_save_as_new():
     # Show preview
     st.info(f"**Preview:** The new web map will be titled: **{custom_title}**")
     
-    # Debug mode control
-    debug_mode = show_debug_mode_control("save_as_new_filters")
+    # Get debug mode from global settings
+    debug_mode = st.session_state.get("debug_mode", True)
     
     # Execute button
     col1, col2 = st.columns([1, 3])
@@ -730,47 +721,24 @@ def execute_save_as_new(
 
 def show_help():
     """Display help information for the Web Map Filters tool"""
-    with st.expander("Need Help?"):
+    with st.expander("Help"):
         st.markdown("""
-        ### Web Map Filters Help
-        
-        #### Per-Layer Configuration Tab
-        Configure filters individually for each layer in your web map.
-        
+        **Quick Start**
         1. Select a web map and click "Load Layers"
-        2. Check the "Apply" box for layers you want to update
-        3. Enter the target field name (use the dropdown to select from available fields for each layer)
-        4. Select the filter operator (e.g., =, !=, >, <, LIKE, IN, IS NULL)
-        5. Enter the filter value (leave empty for IS NULL/IS NOT NULL)
-        6. Click "Update Selected Layers"
+        2. Check "Apply" for layers to update
+        3. Select field, operator, and value
+        4. Click "Apply Changes"
         
-        **Note**: Make sure the target field exists in the layer. If you enter a field that 
-        doesn't exist in a particular layer, you'll receive a validation error.
+        **Filter Examples**
+        | Operator | Value | Result |
+        |----------|-------|--------|
+        | `=` | `123` | `field = '123'` |
+        | `IN` | `A,B,C` | `field IN ('A','B','C')` |
+        | `LIKE` | `%test%` | `field LIKE '%test%'` |
+        | `IS NOT NULL` | (empty) | `field IS NOT NULL` |
         
-        #### Save as New Webmap Option
-        When you select "Save as New Webmap" as the operation mode, you can create a copy of an existing web map with a new title.
-        
-        - **Source Web Map**: Select the web map you want to copy
-        - **Title**: Customize the title for the new web map (default: <Original Title>_<Suffix>)
-        - The new map will contain all layers and configurations from the source
-        - A link to the new web map will be provided after creation
-        - Configure the default suffix in Settings → General → Map Suffix
-        
-        #### Filter Examples
-        - **Equals (=)**: Operator `=`, Value `123456` → `project_number = '123456'`
-        - **Not Equals (!=)**: Operator `!=`, Value `Active` → `status != 'Active'`
-        - **Greater Than (>)**: Operator `>`, Value `2023-01-01` → `created_date > '2023-01-01'`
-        - **LIKE**: Operator `LIKE`, Value `%ABC%` → `project_number LIKE '%ABC%'`
-        - **IN**: Operator `IN`, Value `Active,Pending` → `status IN ('Active', 'Pending')`
-        - **IS NULL**: Operator `IS NULL`, Value (empty) → `field_name IS NULL`
-        
-        #### Debug Mode
-        When Debug Mode is enabled, the tool will simulate updates without actually saving changes to the server.
-        This is useful for testing and validation.
-        
-        #### Troubleshooting
-        - Ensure your web map ID is correct
-        - Verify that the target field exists in the layer you're trying to update
-        - Check that your filter expression uses valid SQL syntax
-        - Try running in Debug Mode to see more details
+        **Save as Copy**
+        - Creates a new web map with your changes
+        - Original remains unchanged
+        - Configure default suffix in Settings
         """)

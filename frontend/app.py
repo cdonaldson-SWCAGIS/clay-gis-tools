@@ -61,6 +61,10 @@ else:
         key="navigation"
     )
     
+    # Debug mode indicator
+    if st.session_state.get("debug_mode", True):
+        st.sidebar.warning("Debug mode ON - changes simulated")
+    
     # Page routing
     if page == "Web Map Filters":
         webmap_filters.show()
