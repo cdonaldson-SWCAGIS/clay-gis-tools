@@ -719,26 +719,17 @@ def execute_save_as_new(
                 """)
 
 
+def load_help_markdown(filename: str) -> str:
+    """Load help markdown from docs folder."""
+    docs_path = Path(__file__).parent.parent.parent / "docs" / filename
+    try:
+        with open(docs_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        return "Help content not available."
+
+
 def show_help():
     """Display help information for the Web Map Filters tool"""
     with st.expander("Help"):
-        st.markdown("""
-        **Quick Start**
-        1. Select a web map and click "Load Layers"
-        2. Check "Apply" for layers to update
-        3. Select field, operator, and value
-        4. Click "Apply Changes"
-        
-        **Filter Examples**
-        | Operator | Value | Result |
-        |----------|-------|--------|
-        | `=` | `123` | `field = '123'` |
-        | `IN` | `A,B,C` | `field IN ('A','B','C')` |
-        | `LIKE` | `%test%` | `field LIKE '%test%'` |
-        | `IS NOT NULL` | (empty) | `field IS NOT NULL` |
-        
-        **Save as Copy**
-        - Creates a new web map with your changes
-        - Original remains unchanged
-        - Configure default suffix in Settings
-        """)
+        st.markdown(load_help_markdown("help_webmap_filters.md"))

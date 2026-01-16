@@ -543,23 +543,17 @@ def execute_per_layer_form_update(
                     st.error(f"{layer_url}: {error_msg}")
 
 
+def load_help_markdown(filename: str) -> str:
+    """Load help markdown from docs folder."""
+    docs_path = Path(__file__).parent.parent.parent / "docs" / filename
+    try:
+        with open(docs_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        return "Help content not available."
+
+
 def show_help():
     """Display help information for the Web Map Forms tool"""
     with st.expander("Help"):
-        st.markdown("""
-        **Quick Start**
-        1. Select a web map and click "Load Layers"
-        2. Check "Apply" for layers to update
-        3. Select field and enter default value
-        4. Click "Apply Changes"
-        
-        **Notes**
-        - Only layers with "Has Form = True" can be updated
-        - Different layers can use different field names
-        - The field dropdown shows available fields per layer
-        
-        **Save as Copy**
-        - Creates a new web map with your changes
-        - Original remains unchanged
-        - Configure default suffix in Settings
-        """)
+        st.markdown(load_help_markdown("help_webmap_forms.md"))
