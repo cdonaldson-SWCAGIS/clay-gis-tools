@@ -162,6 +162,7 @@ def show_per_layer_config():
         # Convert fields list to JSON string to ensure proper serialization
         fields_json = json.dumps(fields_with_types) if fields_with_types else "[]"
         
+        
         # Determine form source display value
         # "webmap" = form in webmap, "layer" = form on layer item, "none" = no form
         form_source = layer.get("form_source", "none")

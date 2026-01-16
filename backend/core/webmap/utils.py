@@ -644,3 +644,173 @@ def copy_webmap_as_new(
             "message": f"Unexpected error: {str(e)}",
             "source_webmap_title": None
         }
+
+
+def layer_has_attachments(feature_layer: FeatureLayer) -> bool:
+    """
+    Check if a feature layer has attachments enabled.
+    
+    Args:
+        feature_layer: The FeatureLayer object to check
+        
+    Returns:
+        True if the layer has attachments enabled, False otherwise
+    """
+    if not feature_layer:
+        return False
+    
+    try:
+        # Check the hasAttachments property
+        has_attachments = feature_layer.properties.get("hasAttachments", False)
+        return bool(has_attachments)
+    except Exception as e:
+        logger.warning(f"Error checking attachments for layer: {e}")
+        return False
+
+
+def get_layer_attachments(
+    feature_layer: FeatureLayer,
+    object_ids: List[int]
+) -> Dict[int, List[Dict[str, Any]]]:
+    """
+    Get attachments for specific features in a layer.
+    
+    Args:
+        feature_layer: The FeatureLayer object
+        object_ids: List of object IDs to get attachments for
+        
+    Returns:
+        Dictionary mapping object IDs to lists of attachment info dictionaries.
+        Each attachment dict contains: id, name, contentType, size, etc.
+    """
+    if not feature_layer or not object_ids:
+        return {}
+    
+    attachments_by_oid = {}
+    
+    try:
+        # Check if layer has attachments enabled
+        if not layer_has_attachments(feature_layer):
+            logger.debug("Layer does not have attachments enabled")
+            return {}
+        
+        # Get attachment manager
+        attachment_manager = feature_layer.attachments
+        
+        # Query attachments for each object ID
+        for oid in object_ids:
+            try:
+                attachments = attachment_manager.get_list(oid)
+                if attachments:
+                    attachments_by_oid[oid] = attachments
+                    logger.debug(f"Found {len(attachments)} attachments for OID {oid}")
+            except Exception as e:
+                logger.warning(f"Error getting attachments for OID {oid}: {e}")
+                attachments_by_oid[oid] = []
+        
+        return attachments_by_oid
+        
+    except Exception as e:
+        logger.error(f"Error getting attachments: {e}")
+        return {}
+
+
+def query_features_by_field(
+    layer_url: str,
+    match_field: str,
+    gis: GIS,
+    where_clause: str = "1=1"
+) -> List[Dict[str, Any]]:
+    """
+    Query features from a layer and return specified field values along with feature info.
+    
+    Args:
+        layer_url: The URL of the feature layer
+        match_field: The field name to retrieve values for
+        gis: The authenticated GIS object
+        where_clause: Optional SQL where clause to filter features
+        
+    Returns:
+        List of dictionaries containing feature info:
+        - object_id: The feature's object ID
+        - global_id: The feature's global ID (if available)
+        - match_value: The value of the match field
+        - layer_url: The layer URL for reference
+    """
+    features = []
+    
+    try:
+        feature_layer = FeatureLayer(layer_url, gis=gis)
+        
+        # Get the ObjectID and GlobalID field names from layer properties
+        object_id_field = feature_layer.properties.get("objectIdField", "OBJECTID")
+        global_id_field = feature_layer.properties.get("globalIdField", "GlobalID")
+        
+        # Build out_fields list - include match field, OID, and GlobalID
+        out_fields = [match_field, object_id_field]
+        if global_id_field and global_id_field != object_id_field:
+            out_fields.append(global_id_field)
+        
+        # Query features
+        result = feature_layer.query(
+            where=where_clause,
+            out_fields=",".join(out_fields),
+            return_geometry=False
+        )
+        
+        for f in result.features:
+            attrs = f.attributes
+            match_value = attrs.get(match_field)
+            
+            # Skip features with null/empty match values
+            if match_value is None or match_value == "":
+                continue
+            
+            features.append({
+                "object_id": attrs.get(object_id_field),
+                "global_id": attrs.get(global_id_field, ""),
+                "match_value": match_value,
+                "layer_url": layer_url
+            })
+        
+        logger.info(f"Queried {len(features)} features from layer with match field '{match_field}'")
+        return features
+        
+    except Exception as e:
+        logger.error(f"Error querying features from {layer_url}: {e}")
+        return []
+
+
+def get_webmap_layer_details_with_attachments(
+    webmap_item: Item,
+    gis: GIS
+) -> List[Dict[str, Any]]:
+    """
+    Get detailed information about layers in a web map, filtered to only include
+    layers that have attachments enabled.
+    
+    Args:
+        webmap_item: The web map Item object
+        gis: The authenticated GIS object
+        
+    Returns:
+        List of layer detail dictionaries (same structure as get_webmap_layer_details)
+        but only including layers with attachments enabled.
+    """
+    # Get all layer details first
+    all_layers = get_webmap_layer_details(webmap_item, gis)
+    
+    # Filter to layers with attachments
+    layers_with_attachments = []
+    for layer in all_layers:
+        try:
+            feature_layer = FeatureLayer(layer["url"], gis=gis)
+            if layer_has_attachments(feature_layer):
+                layer["has_attachments"] = True
+                layers_with_attachments.append(layer)
+                logger.debug(f"Layer '{layer['name']}' has attachments enabled")
+        except Exception as e:
+            logger.warning(f"Error checking attachments for layer '{layer['name']}': {e}")
+    
+    logger.info(f"Found {len(layers_with_attachments)} layers with attachments out of {len(all_layers)} total")
+    return layers_with_attachments

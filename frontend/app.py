@@ -59,7 +59,7 @@ else:
     st.sidebar.subheader("Webmap Tools")
     page = st.sidebar.radio(
         "Webmap Tools",
-        ["Update Layer Filters", "Update Layer Form Default Values", "Settings"],
+        ["Update Layer Filters", "Update Layer Form Default Values", "Bulk Create Collections", "Settings"],
         key="navigation",
         label_visibility="collapsed"
     )
@@ -75,6 +75,9 @@ else:
     elif page == "Update Layer Form Default Values":
         from frontend.page_modules import webmap_forms
         webmap_forms.show()
+    elif page == "Bulk Create Collections":
+        from frontend.page_modules import bulk_collections
+        bulk_collections.show()
     elif page == "Settings":
         from frontend.page_modules import settings
         settings.show()
