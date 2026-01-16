@@ -16,7 +16,8 @@ def create_editable_grid(
     key: str,
     height: int = 400,
     fit_columns: bool = True,
-    theme: str = "streamlit"
+    theme: str = "streamlit",
+    enable_fill_handle: bool = False
 ) -> Dict[str, Any]:
     """
     Create an editable AgGrid table with column configurations.
@@ -35,6 +36,8 @@ def create_editable_grid(
         height: Grid height in pixels
         fit_columns: Whether to fit columns to grid width
         theme: Grid theme ('streamlit', 'alpine', 'balham', etc.)
+        enable_fill_handle: Whether to enable Excel-style fill handle for dragging
+            values to other cells (requires Enterprise modules, adds watermark)
     
     Returns:
         Grid response dictionary with 'data' and 'selected_rows' keys
@@ -63,6 +66,16 @@ def create_editable_grid(
     
     grid_options = gb.build()
     
+    # Enable fill handle if requested (Enterprise feature - adds watermark without license)
+    if enable_fill_handle:
+        grid_options["cellSelection"] = {
+            "handle": {
+                "mode": "fill",
+                "direction": "y",  # Only allow vertical fill (down rows)
+                "suppressClearOnFillReduction": True
+            }
+        }
+    
     # Return the grid
     return AgGrid(
         df,
@@ -73,7 +86,8 @@ def create_editable_grid(
         data_return_mode=DataReturnMode.AS_INPUT,
         theme=theme,
         key=key,
-        allow_unsafe_jscode=True
+        allow_unsafe_jscode=True,
+        enable_enterprise_modules=enable_fill_handle
     )
 
 

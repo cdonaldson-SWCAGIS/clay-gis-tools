@@ -317,7 +317,16 @@ def show_per_layer_config():
     
     grid_options = gb.build()
     
-    # Display the AgGrid
+    # Enable fill handle for range copy/paste (Enterprise feature - adds watermark without license)
+    grid_options["cellSelection"] = {
+        "handle": {
+            "mode": "fill",
+            "direction": "y",  # Only allow vertical fill (down rows)
+            "suppressClearOnFillReduction": True
+        }
+    }
+    
+    # Display the AgGrid with enterprise modules enabled for fill handle
     grid_response = AgGrid(
         df,
         gridOptions=grid_options,
@@ -327,7 +336,8 @@ def show_per_layer_config():
         data_return_mode=DataReturnMode.AS_INPUT,
         theme="streamlit",
         key=f"filter_layer_editor_{selected_webmap.id}",
-        allow_unsafe_jscode=True
+        allow_unsafe_jscode=True,
+        enable_enterprise_modules=True
     )
     
     # Get edited data from grid response

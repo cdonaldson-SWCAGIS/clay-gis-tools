@@ -1,50 +1,47 @@
-# Use the official ArcGIS Python API Docker image as base
-FROM ghcr.io/esri/arcgis-python-api-notebook
+# Use official Python slim image for smaller size and faster builds
+FROM python:3.11-slim
 
-# Switch to root user to install additional packages
-USER root
-
-# Install additional system dependencies if needed
+# Install system dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    krb5-user \
+    curl \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
 # Set the working directory
 WORKDIR /app
 
-# Copy requirements file first (for better Docker caching)
-COPY requirements/base.txt requirements.txt
+# Set Python environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONIOENCODING=UTF-8
 
-# Install arcgis-mapping via conda from the esri channel
-# This must be done before pip installs to ensure proper dependencies
-RUN conda install -y -c esri arcgis-mapping
+# Copy and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Install additional Python packages for your application
-# The base image already includes arcgis, but we'll upgrade/reinstall to ensure compatibility
-RUN pip install --no-cache-dir --upgrade -r requirements.txt
-
-# Copy the rest of the application files
+# Copy application files
 COPY backend/ /app/backend/
 COPY frontend/ /app/frontend/
 COPY cli/ /app/cli/
 COPY static/ /app/static/
 
-# Create a non-root user for running the application (if not already present)
-# The base image already has a notebook user, but we'll ensure proper permissions
-RUN chown -R ${NB_UID}:${NB_GID} /app
+# Create non-root user for security
+RUN useradd --create-home --shell /bin/bash appuser && \
+    chown -R appuser:appuser /app
+USER appuser
 
-# Expose the Streamlit port
+# Expose Streamlit port
 EXPOSE 8501
 
-# Switch back to the notebook user (security best practice)
-USER ${NB_UID}
+# Streamlit configuration
+ENV STREAMLIT_SERVER_HEADLESS=true \
+    STREAMLIT_SERVER_PORT=8501 \
+    STREAMLIT_SERVER_ADDRESS=0.0.0.0
 
-# Set environment variables for better Streamlit behavior in containers
-ENV STREAMLIT_SERVER_HEADLESS=true
-ENV STREAMLIT_SERVER_PORT=8501
-ENV STREAMLIT_SERVER_ADDRESS=0.0.0.0
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl --fail http://localhost:8501/_stcore/health || exit 1
 
-# Run Streamlit application
-CMD ["streamlit", "run", "frontend/app.py"]
+# Run Streamlit
+CMD ["streamlit", "run", "frontend/app.py", "--server.port=8501", "--server.address=0.0.0.0"]

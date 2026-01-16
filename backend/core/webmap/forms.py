@@ -977,6 +977,95 @@ def update_webmap_forms_by_layer_config(
         raise LayerProcessingError(f"Error in update process: {e}") from e
 
 
+def update_webmap_forms_simplified(
+    webmap_item_id: str,
+    gis: GIS,
+    layer_field_values: Dict[str, Dict[str, str]],
+    debug_mode: bool = False
+) -> Dict[str, Any]:
+    """
+    Simplified form update - auto-generates technical parameters from field name and value.
+    
+    This is a user-friendly wrapper around update_webmap_forms_by_layer_config that
+    automatically generates expression names, labels, and other technical details
+    from just the field name and default value.
+    
+    Args:
+        webmap_item_id: The ID of the web map to update
+        gis: The authenticated GIS object
+        layer_field_values: Dict mapping layer URLs to simplified config:
+            {
+                "https://.../FeatureServer/0": {
+                    "field_name": "project_number",
+                    "default_value": "12345"
+                }
+            }
+        debug_mode: Whether to simulate updates without saving
+        
+    Returns:
+        Dictionary with results (same as update_webmap_forms_by_layer_config):
+            {
+                "updated_layers": List of layer URLs that were updated,
+                "skipped_layers": List of layer URLs skipped,
+                "errors": Dict mapping layer URLs to error messages,
+                "expressions_added": List of expression names added
+            }
+    
+    Auto-generation logic:
+        - expression_name: "expr/set-{field_name}" (underscores become hyphens)
+        - expression_value: The provided default_value
+        - group_name: "Metadata" (constant)
+        - field_label: field_name with underscores replaced by spaces, title-cased
+        - editable: False (constant)
+    """
+    logger.info(f"Starting simplified form update for web map {webmap_item_id}")
+    logger.info(f"Processing {len(layer_field_values)} layer configurations")
+    
+    # Convert simplified config to full layer_configs format
+    layer_configs = {}
+    for layer_url, config in layer_field_values.items():
+        field_name = config.get("field_name", "")
+        default_value = config.get("default_value", "")
+        
+        if not field_name:
+            logger.warning(f"Skipping layer {layer_url}: missing field_name")
+            continue
+        
+        if not default_value:
+            logger.warning(f"Skipping layer {layer_url}: missing default_value")
+            continue
+        
+        # Auto-generate technical parameters
+        # Expression name: expr/set-project-number from project_number
+        expression_name = f"expr/set-{field_name.replace('_', '-')}"
+        
+        # Label: "Project Number" from "project_number"
+        field_label = field_name.replace("_", " ").title()
+        
+        layer_configs[layer_url] = {
+            "field_name": field_name,
+            "expression_name": expression_name,
+            "expression_value": default_value,
+            "group_name": DEFAULT_GROUP_NAME,
+            "field_label": field_label,
+            "editable": False
+        }
+        
+        logger.debug(f"Generated config for {field_name}: expr={expression_name}, label={field_label}")
+    
+    if not layer_configs:
+        logger.warning("No valid layer configurations after processing")
+        return {
+            "updated_layers": [],
+            "skipped_layers": [],
+            "errors": {},
+            "expressions_added": []
+        }
+    
+    # Delegate to the full configuration function
+    return update_webmap_forms_by_layer_config(webmap_item_id, layer_configs, gis, debug_mode)
+
+
 def test_propagate_form_elements(
     gis: GIS,
     webmap_item_id: str = "d1ea52f5280d4d57b5e331d21e00296e",

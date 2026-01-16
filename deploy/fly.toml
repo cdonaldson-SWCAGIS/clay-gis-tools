@@ -7,6 +7,11 @@ app = 'clay-gis-tools'
 primary_region = 'lax'
 
 [build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PYTHONUNBUFFERED = "1"
+  PYTHONDONTWRITEBYTECODE = "1"
 
 [http_service]
   internal_port = 8501
@@ -15,6 +20,22 @@ primary_region = 'lax'
   auto_start_machines = true
   min_machines_running = 0
   processes = ['app']
+  
+  # Concurrency settings for better load handling
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 100
+    hard_limit = 200
+  
+  # Health checks to ensure application is running correctly
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/_stcore/health"
+    protocol = "http"
+    timeout = "5s"
+    tls_skip_verify = false
 
 [[vm]]
   memory = '1gb'

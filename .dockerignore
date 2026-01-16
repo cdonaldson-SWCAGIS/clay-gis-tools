@@ -1,15 +1,69 @@
+# Version control
 .git
 .gitignore
+.github/
+
+# IDE/Editor
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python cache and bytecode
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.so
 .pytest_cache/
-.streamlit/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+
+# Virtual environments
 .venv/
 venv/
 env/
+ENV/
+
+# Local configuration
+.env
+.env.*
+.streamlit/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Logs
 *.log
+
+# Database files
 *.sqlite3
+*.db
+
+# Documentation (if not needed in image)
+docs/
+*.md
+!README.md
+
+# Deployment files (not needed in image)
+deploy/
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Misc
 memory-bank/
+.python-version
