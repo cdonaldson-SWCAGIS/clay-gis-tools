@@ -9,7 +9,7 @@
 |----------|-------|--------|
 | `=` | `123` | `field = '123'` |
 | `IN` | `A,B,C` | `field IN ('A','B','C')` |
-| `LIKE` | `%test%` | `field LIKE '%test%'` |
+| `LIKE` | `%test%` | `field LIKE '%fff%'` |
 | `IS NOT NULL` | (empty) | `field IS NOT NULL` |
 
 **Save as Copy**

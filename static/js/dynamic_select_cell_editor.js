@@ -4,6 +4,10 @@
  * A custom cell editor that creates a dropdown select element
  * populated with fields from the row's data._fields array.
  * 
+ * Supports two field formats:
+ * - Legacy: Array of strings ["field1", "field2"]
+ * - New: Array of objects [{name: "field1", type: "esriFieldTypeString"}, ...]
+ * 
  * Implements the AgGrid ICellEditor interface:
  * - init(params): Initialize the editor with cell parameters
  * - getGui(): Return the DOM element for the editor
@@ -75,12 +79,23 @@ class DynamicSelectCellEditor {
         // Add field options - ensure fields is an array before iterating
         if (Array.isArray(this.fields)) {
             this.fields.forEach((field) => {
-                // Skip null, undefined, or non-string fields
+                // Handle both string fields and object fields {name, type}
+                // This supports both legacy format (strings) and new format (objects)
+                let fieldName = null;
+                
                 if (field != null && typeof field === 'string') {
+                    // Legacy format: field is just a string
+                    fieldName = field;
+                } else if (field != null && typeof field === 'object' && field.name) {
+                    // New format: field is an object with name and type properties
+                    fieldName = field.name;
+                }
+                
+                if (fieldName != null && typeof fieldName === 'string') {
                     const option = document.createElement('option');
-                    option.value = field;
-                    option.text = field;
-                    if (field === this.value) {
+                    option.value = fieldName;
+                    option.text = fieldName;
+                    if (fieldName === this.value) {
                         option.selected = true;
                     }
                     this.eSelect.appendChild(option);

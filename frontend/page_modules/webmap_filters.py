@@ -17,6 +17,7 @@ from frontend.components.common_operations import (
     ensure_authentication, get_gis_object,
     execute_operation_with_status, show_tool_header, get_environment_setting
 )
+from frontend.components.field_validation import show_validation_ui
 from backend.core.webmap.utils import get_webmap_layer_details
 
 # Import copy_webmap_as_new with fallback
@@ -191,14 +192,18 @@ def show_per_layer_config():
     import json
     df_data = []
     for layer in layer_details:
-        # Ensure fields is always a list (not None or other type)
-        layer_fields = layer.get("fields", [])
-        if not isinstance(layer_fields, list):
-            layer_fields = []
+        # Use fields_with_types for validation support (includes name and type)
+        # Falls back to fields for backward compatibility
+        fields_with_types = layer.get("fields_with_types", [])
+        if not fields_with_types:
+            # Fallback: convert old format to new format
+            layer_fields = layer.get("fields", [])
+            if isinstance(layer_fields, list):
+                fields_with_types = [{"name": f, "type": "esriFieldTypeString"} for f in layer_fields]
         
         # Convert fields list to JSON string to ensure proper serialization
         # This ensures the list is preserved when AgGrid serializes the data
-        fields_json = json.dumps(layer_fields) if layer_fields else "[]"
+        fields_json = json.dumps(fields_with_types) if fields_with_types else "[]"
         
         df_data.append({
             "Apply": False,
@@ -208,7 +213,7 @@ def show_per_layer_config():
             "Filter Operator": "=",
             "Filter Value": "",
             "_url": layer["url"],  # Hidden column for reference
-            "_fields": fields_json  # Store as JSON string to ensure proper serialization
+            "_fields": fields_json  # Store as JSON string with type info for validation
         })
     
     df = pd.DataFrame(df_data)
@@ -344,6 +349,17 @@ def show_per_layer_config():
     selected_count = edited_df["Apply"].sum()
     st.markdown(f"**Selected layers:** {selected_count}")
     
+    # Validation UI - must pass before Apply is enabled
+    validation_passed = False
+    if selected_count > 0:
+        validation_passed = show_validation_ui(
+            edited_df,
+            session_key="filters",
+            field_column="Target Field",
+            value_column="Filter Value",
+            operator_column="Filter Operator"
+        )
+    
     # Operation mode selection
     st.divider()
     operation_mode = st.radio(
@@ -366,7 +382,7 @@ def show_per_layer_config():
         if not new_title:
             new_title = default_title
     
-    # Execute button
+    # Execute button - disabled until validation passes
     col1, col2 = st.columns([1, 3])
     with col1:
         button_text = "Save Copy" if operation_mode == "Save as Copy" else "Apply Changes"
@@ -374,8 +390,12 @@ def show_per_layer_config():
             button_text,
             type="primary",
             use_container_width=True,
-            disabled=selected_count == 0
+            disabled=selected_count == 0 or not validation_passed
         )
+    
+    # Show hint if validation needed
+    if selected_count > 0 and not validation_passed:
+        st.info("Click **Validate** to check field types before applying changes.")
     
     # Handle update request
     if update_button and selected_count > 0:
@@ -400,7 +420,7 @@ def show_per_layer_config():
                     continue
                 
                 # Check if target field exists in this layer's fields
-                # Parse the JSON string back to a list
+                # Parse the JSON string back to a list (now contains objects with name/type)
                 layer_fields_str = row["_fields"]
                 try:
                     if isinstance(layer_fields_str, str):
@@ -411,7 +431,10 @@ def show_per_layer_config():
                 except (json.JSONDecodeError, TypeError):
                     layer_fields = []
                 
-                if target_field not in layer_fields:
+                # Extract field names from objects (handles both old string format and new object format)
+                field_names = [f["name"] if isinstance(f, dict) else f for f in layer_fields]
+                
+                if target_field not in field_names:
                     validation_errors.append(f"'{layer_name}': Field '{target_field}' not available in this layer")
                     continue
                 

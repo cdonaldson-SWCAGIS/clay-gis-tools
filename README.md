@@ -20,7 +20,6 @@ A Python-based web application and utility suite for automating GIS workflows in
 
 - **Web Map Filter Updates**: Programmatically update definition expressions (filters) across multiple layers in web maps
 - **Web Map Form Configuration**: Update form elements and propagate configurations between layers
-- **Web Map Analysis**: Analyze web map structure and generate detailed reports
 - **Save as New Web Map**: Duplicate existing web maps with configurable title suffixes
 - **Recursive Layer Processing**: Handle complex web map structures including nested group layers
 - **Batch Processing**: Process multiple web maps with the same configuration
@@ -32,7 +31,6 @@ A Python-based web application and utility suite for automating GIS workflows in
 - **Authentication**: Connect to ArcGIS Online/Portal
 - **Web Map Filters**: Update definition expressions in web maps
 - **Web Map Forms**: Configure form elements in web maps and save web maps as new
-- **Web Map Analysis**: Analyze and report on web map structures
 - **Settings**: Configure application settings, debug mode, and map suffix
 
 ## Installation
@@ -221,8 +219,6 @@ clay-gis-tools/
 │   │   ├── webmap/        # Web map operations
 │   │   │   ├── filters.py      # Filter update logic
 │   │   │   ├── forms.py        # Form configuration logic
-│   │   │   ├── analysis.py    # Analysis logic
-│   │   │   ├── reports.py     # Report generation
 │   │   │   └── utils.py       # Web map utilities
 │   │   ├── clip/          # Clipping operations
 │   │   │   ├── operations.py  # Clipping logic
@@ -240,7 +236,6 @@ clay-gis-tools/
 │   │   ├── authentication.py
 │   │   ├── webmap_filters.py
 │   │   ├── webmap_forms.py
-│   │   ├── webmap_analysis.py
 │   │   └── settings.py
 │   └── components/        # Reusable UI components
 │       ├── item_selector.py
@@ -249,8 +244,7 @@ clay-gis-tools/
 │
 ├── cli/                   # Command-line scripts
 │   ├── patch_filters.py
-│   ├── patch_forms.py
-│   └── analyze_webmap.py
+│   └── patch_forms.py
 │
 ├── tests/                 # Test suite
 │   ├── unit/              # Unit tests

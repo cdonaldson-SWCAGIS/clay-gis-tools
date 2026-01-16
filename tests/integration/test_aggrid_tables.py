@@ -1,8 +1,8 @@
 """
 Integration tests for AgGrid table implementations.
 
-Tests the full table implementations in webmap_filters, webmap_forms,
-and webmap_analysis modules using mocked AgGrid and Streamlit components.
+Tests the full table implementations in webmap_filters and webmap_forms
+modules using mocked AgGrid and Streamlit components.
 """
 
 import unittest
@@ -187,54 +187,6 @@ class TestWebMapFormsAgGrid(unittest.TestCase):
         
         # We verify the expected structure is correct
         self.assertTrue(True)  # Placeholder - actual verification in code review
-
-
-class TestWebMapAnalysisAgGrid(unittest.TestCase):
-    """Integration tests for AgGrid in webmap_analysis module."""
-    
-    @patch('frontend.page_modules.webmap_analysis.AgGrid')
-    @patch('frontend.page_modules.webmap_analysis.GridOptionsBuilder')
-    @patch('frontend.page_modules.webmap_analysis.st')
-    def test_analysis_table_is_readonly(self, mock_st, mock_gob, mock_aggrid):
-        """Test that analysis table is configured as read-only."""
-        # Set up mocks
-        mock_builder = MagicMock()
-        mock_gob.from_dataframe.return_value = mock_builder
-        mock_builder.build.return_value = {'columnDefs': []}
-        
-        # The table should have editable=False in configure_default_column
-        # This is verified by the configuration in the module
-        
-        self.assertTrue(True)  # Placeholder for verification
-    
-    def test_severity_columns_have_styling(self):
-        """Test that severity columns (Critical, Warnings, Info) have conditional styling."""
-        # The configuration in webmap_analysis.py defines JsCode for cell styling:
-        # - Critical: red background when > 0
-        # - Warnings: yellow background when > 0
-        # - Info: green background when > 0
-        
-        # Expected column names with styling
-        styled_columns = ["Critical", "Warnings", "Info"]
-        
-        self.assertIn("Critical", styled_columns)
-        self.assertIn("Warnings", styled_columns)
-        self.assertIn("Info", styled_columns)
-    
-    @patch('frontend.page_modules.webmap_analysis.AgGrid')
-    @patch('frontend.page_modules.webmap_analysis.GridOptionsBuilder')
-    def test_analysis_table_enables_selection(self, mock_gob, mock_aggrid):
-        """Test that analysis table enables row selection."""
-        # Set up mocks
-        mock_builder = MagicMock()
-        mock_gob.from_dataframe.return_value = mock_builder
-        mock_builder.build.return_value = {'columnDefs': []}
-        
-        # The table should call configure_selection
-        # This is verified by the configuration in the module:
-        # gb.configure_selection(selection_mode="single", use_checkbox=False)
-        
-        self.assertTrue(True)  # Placeholder for verification
 
 
 class TestAgGridDataHandling(unittest.TestCase):

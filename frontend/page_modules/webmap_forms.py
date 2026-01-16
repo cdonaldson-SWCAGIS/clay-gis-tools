@@ -18,6 +18,7 @@ from frontend.components.common_operations import (
     ensure_authentication, get_gis_object,
     execute_operation_with_status, show_tool_header, get_environment_setting
 )
+from frontend.components.field_validation import show_validation_ui, show_form_validation_summary
 from backend.core.webmap.utils import get_webmap_layer_details
 
 # Import copy_webmap_as_new with fallback
@@ -149,13 +150,17 @@ def show_per_layer_config():
     # Prepare DataFrame for the data editor (simplified: only Apply, Layer Name, Field, Default Value)
     df_data = []
     for layer in display_layers:
-        # Ensure fields is always a list (not None or other type)
-        layer_fields = layer.get("fields", [])
-        if not isinstance(layer_fields, list):
-            layer_fields = []
+        # Use fields_with_types for validation support (includes name and type)
+        # Falls back to fields for backward compatibility
+        fields_with_types = layer.get("fields_with_types", [])
+        if not fields_with_types:
+            # Fallback: convert old format to new format
+            layer_fields = layer.get("fields", [])
+            if isinstance(layer_fields, list):
+                fields_with_types = [{"name": f, "type": "esriFieldTypeString"} for f in layer_fields]
         
         # Convert fields list to JSON string to ensure proper serialization
-        fields_json = json.dumps(layer_fields) if layer_fields else "[]"
+        fields_json = json.dumps(fields_with_types) if fields_with_types else "[]"
         
         df_data.append({
             "Apply": False,
@@ -164,7 +169,7 @@ def show_per_layer_config():
             "Field": "",
             "Default Value": "",
             "_url": layer["url"],
-            "_fields": fields_json  # Store as JSON string to ensure proper serialization
+            "_fields": fields_json  # Store as JSON string with type info for validation
         })
     
     df = pd.DataFrame(df_data)
@@ -288,6 +293,18 @@ def show_per_layer_config():
     selected_count = edited_df["Apply"].sum()
     st.markdown(f"**Selected layers:** {selected_count}")
     
+    # Validation UI - must pass before Apply is enabled
+    validation_passed = False
+    if selected_count > 0:
+        validation_passed = show_validation_ui(
+            edited_df,
+            session_key="forms",
+            field_column="Field",
+            value_column="Default Value",
+            operator_column=None,  # Forms don't have operators
+            is_form_mode=True  # Enable form-specific validation
+        )
+    
     # Operation mode selection
     st.divider()
     operation_mode = st.radio(
@@ -310,7 +327,7 @@ def show_per_layer_config():
         if not new_title:
             new_title = default_title
     
-    # Execute button
+    # Execute button - disabled until validation passes
     col1, col2 = st.columns([1, 3])
     with col1:
         button_text = "Save Copy" if operation_mode == "Save as Copy" else "Apply Changes"
@@ -318,9 +335,13 @@ def show_per_layer_config():
             button_text,
             type="primary",
             use_container_width=True,
-            disabled=selected_count == 0,
+            disabled=selected_count == 0 or not validation_passed,
             key="forms_update_btn"
         )
+    
+    # Show hint if validation needed
+    if selected_count > 0 and not validation_passed:
+        st.info("Click **Validate** to check field types before applying changes.")
     
     # Handle update request
     if update_button and selected_count > 0:
@@ -348,7 +369,7 @@ def show_per_layer_config():
                     continue
                 
                 # Check if field exists in this layer's fields
-                # Parse the JSON string back to a list
+                # Parse the JSON string back to a list (now contains objects with name/type)
                 layer_fields_str = row["_fields"]
                 try:
                     if isinstance(layer_fields_str, str):
@@ -358,7 +379,10 @@ def show_per_layer_config():
                 except (json.JSONDecodeError, TypeError):
                     layer_fields = []
                 
-                if field_name not in layer_fields:
+                # Extract field names from objects (handles both old string format and new object format)
+                field_names = [f["name"] if isinstance(f, dict) else f for f in layer_fields]
+                
+                if field_name not in field_names:
                     validation_errors.append(f"'{layer_name}': Field '{field_name}' not available in this layer")
                     continue
                 
@@ -484,9 +508,16 @@ def execute_per_layer_form_update_as_new(
                 if debug_mode:
                     st.info("Debug mode: Changes were simulated and not saved to the server")
             
+            # Show backend validation errors if any
+            if result.get("validation_errors"):
+                show_form_validation_summary(result["validation_errors"])
+            
             if result.get("errors"):
                 with st.expander("Error Details", expanded=True):
                     for layer_url, error_msg in result["errors"].items():
+                        # Skip validation summary error (already shown above)
+                        if layer_url == "_validation":
+                            continue
                         st.error(f"{layer_url}: {error_msg}")
         else:
             st.error(f"{result.get('error', 'Failed to create new web map with forms')}")
@@ -537,9 +568,16 @@ def execute_per_layer_form_update(
             if debug_mode:
                 st.info("Debug mode: Changes were simulated and not saved to the server")
         
+        # Show backend validation errors if any
+        if result.get("validation_errors"):
+            show_form_validation_summary(result["validation_errors"])
+        
         if result.get("errors"):
             with st.expander("Error Details", expanded=True):
                 for layer_url, error_msg in result["errors"].items():
+                    # Skip validation summary error (already shown above)
+                    if layer_url == "_validation":
+                        continue
                     st.error(f"{layer_url}: {error_msg}")
 
 

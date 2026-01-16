@@ -32,7 +32,7 @@ if os.path.exists(css_path):
     load_css(css_path)
 
 # Import pages
-from frontend.page_modules import authentication, webmap_filters, webmap_forms, webmap_analysis, settings
+from frontend.page_modules import authentication, webmap_filters, webmap_forms, settings
 from backend.utils.logging import configure_logging
 
 # Configure logging once at startup
@@ -57,7 +57,7 @@ else:
     # Navigation
     page = st.sidebar.radio(
         "Navigation",
-        ["Web Map Filters", "Web Map Forms", "Web Map Analysis", "Settings"],
+        ["Web Map Filters", "Web Map Forms", "Settings"],
         key="navigation"
     )
     
@@ -70,8 +70,6 @@ else:
         webmap_filters.show()
     elif page == "Web Map Forms":
         webmap_forms.show()
-    elif page == "Web Map Analysis":
-        webmap_analysis.show()
     elif page == "Settings":
         settings.show()
     

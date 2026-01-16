@@ -44,8 +44,14 @@ def ensure_expression_infos(webmap_data: Dict) -> None:
     if "expressionInfos" not in webmap_data:
         webmap_data["expressionInfos"] = []
 
-def add_custom_expression(webmap_data: Dict, expression_name: str, expression_value: Optional[str] = None, 
-                          title: Optional[str] = None, return_type: str = "string") -> bool:
+def add_custom_expression(
+    webmap_data: Dict, 
+    expression_name: str, 
+    expression_value: Optional[str] = None, 
+    title: Optional[str] = None, 
+    return_type: str = "string",
+    field_type: Optional[str] = None
+) -> bool:
     """
     Add a custom expression to the web map's expressionInfos.
     
@@ -55,6 +61,9 @@ def add_custom_expression(webmap_data: Dict, expression_name: str, expression_va
         expression_value: The value for the expression (random if not provided)
         title: The title for the expression (derived from name if not provided)
         return_type: The return type of the expression (default: "string")
+                     Will be overridden by field_type if provided.
+        field_type: Optional Esri field type (e.g., "esriFieldTypeInteger").
+                    If provided, overrides return_type and formats value correctly.
         
     Returns:
         bool: True if the expression was added, False if it already existed
@@ -97,16 +106,438 @@ def add_custom_expression(webmap_data: Dict, expression_name: str, expression_va
         base_name = parts[-1] if len(parts) > 0 else expression_name
         title = ' '.join(word.capitalize() for word in base_name.replace('-', ' ').split())
     
+    # Determine return type and format expression value based on field type
+    if field_type:
+        # Field type to return type mapping (defined later in validation section)
+        field_type_to_return = {
+            "esriFieldTypeString": "string",
+            "esriFieldTypeGUID": "string",
+            "esriFieldTypeGlobalID": "string",
+            "esriFieldTypeInteger": "number",
+            "esriFieldTypeSmallInteger": "number",
+            "esriFieldTypeOID": "number",
+            "esriFieldTypeDouble": "number",
+            "esriFieldTypeSingle": "number",
+            "esriFieldTypeDate": "date",
+        }
+        return_type = field_type_to_return.get(field_type, "string")
+        
+        # Format expression value based on field type
+        numeric_types = ["esriFieldTypeInteger", "esriFieldTypeSmallInteger", 
+                        "esriFieldTypeOID", "esriFieldTypeDouble", "esriFieldTypeSingle"]
+        date_types = ["esriFieldTypeDate"]
+        
+        if field_type in numeric_types:
+            # Numbers should not be quoted
+            try:
+                float(expression_value)
+                formatted_expression = expression_value
+            except ValueError:
+                logger.warning(f"Value '{expression_value}' is not a valid number for field type {field_type}")
+                formatted_expression = f'"{expression_value}"'
+        elif field_type in date_types:
+            # Dates: use timestamp or Date() function
+            if expression_value.startswith("Date(") or expression_value.isdigit():
+                formatted_expression = expression_value
+            else:
+                try:
+                    from datetime import datetime
+                    dt = datetime.strptime(expression_value, "%Y-%m-%d")
+                    timestamp = int(dt.timestamp() * 1000)
+                    formatted_expression = str(timestamp)
+                except ValueError:
+                    logger.warning(f"Value '{expression_value}' could not be parsed as date")
+                    formatted_expression = f'"{expression_value}"'
+        else:
+            # Strings should be quoted
+            formatted_expression = f'"{expression_value}"'
+    else:
+        # Default: wrap in quotes for string type
+        formatted_expression = f'"{expression_value}"'
+    
     # Add the custom expression
     webmap_data["expressionInfos"].append({
-        "expression": f"\"{expression_value}\"",
+        "expression": formatted_expression,
         "name": expression_name,
         "returnType": return_type,
         "title": title
     })
-    logger.info(f"Added expression '{expression_name}' with value: {expression_value}")
+    logger.info(f"Added expression '{expression_name}' with value: {expression_value} (type: {return_type})")
     
     return True
+
+
+# =============================================================================
+# Form Validation Functions
+# =============================================================================
+
+# Esri field type to expression return type mapping
+ESRI_FIELD_TYPE_TO_RETURN_TYPE = {
+    "esriFieldTypeString": "string",
+    "esriFieldTypeGUID": "string",
+    "esriFieldTypeGlobalID": "string",
+    "esriFieldTypeInteger": "number",
+    "esriFieldTypeSmallInteger": "number",
+    "esriFieldTypeOID": "number",
+    "esriFieldTypeDouble": "number",
+    "esriFieldTypeSingle": "number",
+    "esriFieldTypeDate": "date",
+}
+
+# Field types that should have numeric expression values (no quotes)
+NUMERIC_FIELD_TYPES = ["esriFieldTypeInteger", "esriFieldTypeSmallInteger", 
+                       "esriFieldTypeOID", "esriFieldTypeDouble", "esriFieldTypeSingle"]
+
+# Field types that should have date expression values
+DATE_FIELD_TYPES = ["esriFieldTypeDate"]
+
+
+def get_expression_return_type(field_type: str) -> str:
+    """
+    Get the correct expression returnType for a given Esri field type.
+    
+    Args:
+        field_type: Esri field type (e.g., "esriFieldTypeInteger")
+        
+    Returns:
+        Expression return type ("string", "number", or "date")
+    """
+    return ESRI_FIELD_TYPE_TO_RETURN_TYPE.get(field_type, "string")
+
+
+def format_expression_value(value: str, field_type: str) -> str:
+    """
+    Format an expression value correctly based on field type.
+    
+    Args:
+        value: The value to format
+        field_type: Esri field type
+        
+    Returns:
+        Properly formatted expression string
+    """
+    if field_type in NUMERIC_FIELD_TYPES:
+        # Numbers should not be quoted
+        try:
+            # Validate it's a valid number
+            float(value)
+            return value
+        except ValueError:
+            logger.warning(f"Value '{value}' is not a valid number for field type {field_type}, wrapping in quotes")
+            return f'"{value}"'
+    
+    elif field_type in DATE_FIELD_TYPES:
+        # Dates should use Date() function or timestamp
+        if value.startswith("Date(") or value.isdigit():
+            return value
+        # Try to parse as ISO date and convert to timestamp
+        try:
+            from datetime import datetime
+            dt = datetime.strptime(value, "%Y-%m-%d")
+            timestamp = int(dt.timestamp() * 1000)
+            return str(timestamp)
+        except ValueError:
+            logger.warning(f"Value '{value}' could not be parsed as date, wrapping in quotes")
+            return f'"{value}"'
+    
+    else:
+        # Strings should be quoted
+        return f'"{value}"'
+
+
+def validate_expression_references(
+    webmap_data: Dict,
+    form_elements: List[Dict],
+    layer_title: str = "Unknown"
+) -> Tuple[bool, List[str]]:
+    """
+    Validate that all expression references in form elements exist in expressionInfos.
+    
+    Args:
+        webmap_data: The web map data dictionary
+        form_elements: List of form elements to validate
+        layer_title: Layer title for error messages
+        
+    Returns:
+        Tuple of (is_valid, list of error messages)
+    """
+    errors = []
+    
+    # Get all defined expression names
+    defined_expressions = set()
+    if "expressionInfos" in webmap_data:
+        for expr in webmap_data["expressionInfos"]:
+            if "name" in expr:
+                defined_expressions.add(expr["name"])
+    
+    # Expression properties to check
+    expression_props = ["valueExpression", "editableExpression", "visibilityExpression", "requiredExpression"]
+    
+    def check_element(element: Dict, path: str = "") -> None:
+        """Recursively check elements for expression references."""
+        for prop in expression_props:
+            if prop in element:
+                expr_name = element[prop]
+                if expr_name and expr_name not in defined_expressions:
+                    errors.append(
+                        f"Layer '{layer_title}'{path}: {prop} references undefined expression '{expr_name}'"
+                    )
+        
+        # Check nested elements (groups)
+        if element.get("type") == "group" and "elements" in element:
+            group_path = f"{path} > {element.get('label', 'Group')}"
+            for nested in element["elements"]:
+                check_element(nested, group_path)
+    
+    for element in form_elements:
+        check_element(element)
+    
+    return (len(errors) == 0, errors)
+
+
+def validate_expression_types(
+    webmap_data: Dict,
+    form_elements: List[Dict],
+    field_types: Dict[str, str],
+    layer_title: str = "Unknown"
+) -> Tuple[bool, List[str]]:
+    """
+    Validate that expression return types match field types.
+    
+    Args:
+        webmap_data: The web map data dictionary
+        form_elements: List of form elements to validate
+        field_types: Dict mapping field names to their Esri field types
+        layer_title: Layer title for error messages
+        
+    Returns:
+        Tuple of (is_valid, list of error messages)
+    """
+    errors = []
+    warnings = []
+    
+    # Build map of expression names to their return types
+    expr_return_types = {}
+    if "expressionInfos" in webmap_data:
+        for expr in webmap_data["expressionInfos"]:
+            if "name" in expr and "returnType" in expr:
+                expr_return_types[expr["name"]] = expr["returnType"]
+    
+    def check_element(element: Dict, path: str = "") -> None:
+        """Recursively check elements for type mismatches."""
+        if element.get("type") == "field" and "fieldName" in element:
+            field_name = element["fieldName"]
+            field_type = field_types.get(field_name, "esriFieldTypeString")
+            expected_return_type = get_expression_return_type(field_type)
+            
+            # Check valueExpression return type matches field type
+            if "valueExpression" in element:
+                expr_name = element["valueExpression"]
+                actual_return_type = expr_return_types.get(expr_name, "unknown")
+                
+                if actual_return_type != "unknown" and actual_return_type != expected_return_type:
+                    warnings.append(
+                        f"Layer '{layer_title}'{path}: Field '{field_name}' is {field_type}, "
+                        f"but valueExpression '{expr_name}' returns '{actual_return_type}' "
+                        f"(expected '{expected_return_type}')"
+                    )
+            
+            # Check that editableExpression is false when valueExpression is used
+            if "valueExpression" in element:
+                editable_expr = element.get("editableExpression", "")
+                if editable_expr and editable_expr != "expr/system/false":
+                    actual_return = expr_return_types.get(editable_expr)
+                    # If editableExpression evaluates to true, that's a problem
+                    if editable_expr == "expr/system/true":
+                        errors.append(
+                            f"Layer '{layer_title}'{path}: Field '{field_name}' has valueExpression "
+                            f"but editableExpression is 'expr/system/true'. "
+                            "Fields with calculated values should not be editable."
+                        )
+        
+        # Check constraint expressions return boolean
+        for prop in ["editableExpression", "visibilityExpression", "requiredExpression"]:
+            if prop in element:
+                expr_name = element[prop]
+                actual_return_type = expr_return_types.get(expr_name, "unknown")
+                if actual_return_type != "unknown" and actual_return_type != "boolean":
+                    errors.append(
+                        f"Layer '{layer_title}'{path}: {prop} '{expr_name}' returns '{actual_return_type}' "
+                        "but must return 'boolean'"
+                    )
+        
+        # Check nested elements (groups)
+        if element.get("type") == "group" and "elements" in element:
+            group_path = f"{path} > {element.get('label', 'Group')}"
+            for nested in element["elements"]:
+                check_element(nested, group_path)
+    
+    for element in form_elements:
+        check_element(element)
+    
+    # Log warnings but don't fail validation
+    for warning in warnings:
+        logger.warning(warning)
+    
+    return (len(errors) == 0, errors)
+
+
+def validate_no_nested_groups(
+    form_elements: List[Dict],
+    layer_title: str = "Unknown",
+    depth: int = 0
+) -> Tuple[bool, List[str]]:
+    """
+    Validate that there are no nested groups (ArcGIS doesn't support nested groups).
+    
+    Args:
+        form_elements: List of form elements to validate
+        layer_title: Layer title for error messages
+        depth: Current nesting depth
+        
+    Returns:
+        Tuple of (is_valid, list of error messages)
+    """
+    errors = []
+    
+    for element in form_elements:
+        if element.get("type") == "group":
+            if depth > 0:
+                errors.append(
+                    f"Layer '{layer_title}': Nested groups are not supported. "
+                    f"Group '{element.get('label', 'Unknown')}' is inside another group."
+                )
+            
+            # Check for nested groups within this group
+            if "elements" in element:
+                for nested in element["elements"]:
+                    if nested.get("type") == "group":
+                        errors.append(
+                            f"Layer '{layer_title}': Nested groups are not supported. "
+                            f"Group '{nested.get('label', 'Unknown')}' is inside group '{element.get('label', 'Unknown')}'."
+                        )
+    
+    return (len(errors) == 0, errors)
+
+
+def validate_field_existence(
+    form_elements: List[Dict],
+    layer_fields: List[str],
+    layer_title: str = "Unknown"
+) -> Tuple[bool, List[str]]:
+    """
+    Validate that all field references in form elements exist in the layer schema.
+    
+    Args:
+        form_elements: List of form elements to validate
+        layer_fields: List of field names in the layer
+        layer_title: Layer title for error messages
+        
+    Returns:
+        Tuple of (is_valid, list of error messages)
+    """
+    errors = []
+    
+    def check_element(element: Dict, path: str = "") -> None:
+        """Recursively check elements for field references."""
+        if element.get("type") == "field" and "fieldName" in element:
+            field_name = element["fieldName"]
+            if field_name not in layer_fields:
+                errors.append(
+                    f"Layer '{layer_title}'{path}: Field '{field_name}' does not exist in the layer schema"
+                )
+        
+        # Check nested elements (groups)
+        if element.get("type") == "group" and "elements" in element:
+            group_path = f"{path} > {element.get('label', 'Group')}"
+            for nested in element["elements"]:
+                check_element(nested, group_path)
+    
+    for element in form_elements:
+        check_element(element)
+    
+    return (len(errors) == 0, errors)
+
+
+def validate_form_structure(
+    webmap_data: Dict,
+    layer: Dict,
+    feature_layer: Optional[FeatureLayer] = None,
+    layer_title: str = "Unknown"
+) -> Tuple[bool, List[str]]:
+    """
+    Comprehensive validation of form structure before saving.
+    
+    Validates:
+    - All referenced expressions exist in expressionInfos
+    - Expression return types match field types
+    - No nested groups in formElements
+    - editableExpression is false when valueExpression is used
+    - All field names exist in layer schema
+    - formInfo and formElements structure is valid
+    
+    Args:
+        webmap_data: The web map data dictionary
+        layer: The layer dictionary containing formInfo
+        feature_layer: Optional FeatureLayer for field validation
+        layer_title: Layer title for error messages
+        
+    Returns:
+        Tuple of (is_valid, list of error messages)
+    """
+    all_errors = []
+    
+    # Check formInfo exists
+    if "formInfo" not in layer:
+        all_errors.append(f"Layer '{layer_title}': No formInfo found")
+        return (False, all_errors)
+    
+    form_info = layer["formInfo"]
+    
+    # Check formElements exists
+    if "formElements" not in form_info:
+        all_errors.append(f"Layer '{layer_title}': No formElements found in formInfo")
+        return (False, all_errors)
+    
+    form_elements = form_info["formElements"]
+    
+    # Validate expression references
+    valid, errors = validate_expression_references(webmap_data, form_elements, layer_title)
+    all_errors.extend(errors)
+    
+    # Validate no nested groups
+    valid, errors = validate_no_nested_groups(form_elements, layer_title)
+    all_errors.extend(errors)
+    
+    # Validate field existence and expression types if we have feature layer info
+    if feature_layer:
+        try:
+            fields = feature_layer.properties.fields
+            layer_fields = [f.get("name") for f in fields]
+            field_types = {f.get("name"): f.get("type", "esriFieldTypeString") for f in fields}
+            
+            # Validate field existence
+            valid, errors = validate_field_existence(form_elements, layer_fields, layer_title)
+            all_errors.extend(errors)
+            
+            # Validate expression types
+            valid, errors = validate_expression_types(webmap_data, form_elements, field_types, layer_title)
+            all_errors.extend(errors)
+            
+        except Exception as e:
+            logger.warning(f"Could not validate fields for layer '{layer_title}': {e}")
+    
+    is_valid = len(all_errors) == 0
+    
+    if is_valid:
+        logger.info(f"Layer '{layer_title}': Form structure validation passed")
+    else:
+        logger.warning(f"Layer '{layer_title}': Form structure validation failed with {len(all_errors)} error(s)")
+        for error in all_errors:
+            logger.warning(f"  - {error}")
+    
+    return (is_valid, all_errors)
+
 
 def find_field_element(form_elements: List[Dict], field_name: str) -> Optional[Dict]:
     """
@@ -556,6 +987,39 @@ def update_webmap_forms(
         
         logger.info(f"Updated {len(updated_layers)} layers in total")
         
+        # Validate form structure before saving
+        validation_errors = []
+        for layer, _ in process_webmap_layers(webmap_data):
+            if URL_KEY not in layer:
+                continue
+            
+            layer_url = layer[URL_KEY]
+            layer_title = layer.get(TITLE_KEY, UNNAMED_LAYER)
+            
+            # Only validate layers that were updated
+            if layer_url not in updated_layers:
+                continue
+            
+            # Try to get feature layer for full validation
+            try:
+                feature_layer = FeatureLayer(layer_url, gis=gis)
+            except Exception:
+                feature_layer = None
+            
+            # Validate form structure
+            is_valid, errors = validate_form_structure(webmap_data, layer, feature_layer, layer_title)
+            if not is_valid:
+                validation_errors.extend(errors)
+        
+        # If validation failed, log errors and abort
+        if validation_errors:
+            logger.error(f"Form validation failed with {len(validation_errors)} error(s)")
+            for error in validation_errors:
+                logger.error(f"  - {error}")
+            return []
+        
+        logger.info("Form structure validation passed")
+        
         # Save the changes to the web map
         if DEBUG_MODE:
             logger.info("DEBUG MODE: Webmap update simulated. Changes not saved to the server.")
@@ -777,6 +1241,38 @@ def propagate_form_elements(
         
         logger.info(f"Updated {len(updated_layers)} layers in total")
         
+        # Validate form structure before saving
+        validation_errors = []
+        for layer, _ in process_webmap_layers(webmap_data):
+            layer_title = layer.get(TITLE_KEY, UNNAMED_LAYER)
+            
+            # Only validate layers that were updated
+            if layer_title not in updated_layers:
+                continue
+            
+            if URL_KEY not in layer:
+                continue
+            
+            # Try to get feature layer for full validation
+            try:
+                feature_layer = FeatureLayer(layer[URL_KEY], gis=gis)
+            except Exception:
+                feature_layer = None
+            
+            # Validate form structure
+            is_valid, errors = validate_form_structure(webmap_data, layer, feature_layer, layer_title)
+            if not is_valid:
+                validation_errors.extend(errors)
+        
+        # If validation failed, log errors and abort
+        if validation_errors:
+            logger.error(f"Form validation failed with {len(validation_errors)} error(s)")
+            for error in validation_errors:
+                logger.error(f"  - {error}")
+            return {}
+        
+        logger.info("Form structure validation passed")
+        
         # Save the changes to the web map
         if DEBUG_MODE:
             logger.info("DEBUG MODE: Webmap update simulated. Changes not saved to the server.")
@@ -867,28 +1363,12 @@ def update_webmap_forms_by_layer_config(
             logger.warning("No operational layers found in the webmap data")
             return result
         
-        # Collect all unique expressions needed
-        expressions_to_add = set()
-        for config in layer_configs.values():
-            expr_name = config.get("expression_name", "")
-            if expr_name:
-                expressions_to_add.add(expr_name)
+        # First pass: collect field types and validate layers before adding expressions
+        # This ensures expressions have the correct return type based on field type
+        layer_field_types = {}  # layer_url -> field_type
+        layers_to_process = []  # list of (layer, config, feature_layer) tuples
         
-        # Add all required expressions to the web map
-        for expr_name in expressions_to_add:
-            # Find expression value from any config that uses this expression
-            expr_value = None
-            for config in layer_configs.values():
-                if config.get("expression_name") == expr_name:
-                    expr_value = config.get("expression_value")
-                    break
-            
-            if add_custom_expression(webmap_data, expr_name, expr_value):
-                result["expressions_added"].append(expr_name)
-        
-        # Process all layers including nested ones
         for layer, _ in process_webmap_layers(webmap_data):
-            # Process feature layers with URLs
             if URL_KEY not in layer:
                 continue
                 
@@ -931,6 +1411,52 @@ def update_webmap_forms_by_layer_config(
                     result["skipped_layers"].append(layer_url)
                     continue
                 
+                # Get field type for this field
+                field_type = "esriFieldTypeString"  # Default
+                try:
+                    for field in feature_layer.properties.fields:
+                        if field.get("name") == field_name:
+                            field_type = field.get("type", "esriFieldTypeString")
+                            break
+                except Exception as e:
+                    logger.warning(f"Could not get field type for '{field_name}': {e}")
+                
+                layer_field_types[layer_url] = field_type
+                layers_to_process.append((layer, config, feature_layer, field_type))
+                
+            except Exception as e:
+                logger.error(f"Error processing layer '{layer_title}': {str(e)}")
+                result["errors"][layer_url] = str(e)
+        
+        # Collect all unique expressions needed with their field types
+        expressions_to_add = {}  # expr_name -> (expr_value, field_type)
+        for layer_url, config in layer_configs.items():
+            expr_name = config.get("expression_name", "")
+            if expr_name and layer_url in layer_field_types:
+                expr_value = config.get("expression_value")
+                field_type = layer_field_types.get(layer_url, "esriFieldTypeString")
+                # Store expression with field type (first one wins if multiple layers use same expression)
+                if expr_name not in expressions_to_add:
+                    expressions_to_add[expr_name] = (expr_value, field_type)
+        
+        # Add all required expressions to the web map with correct field types
+        for expr_name, (expr_value, field_type) in expressions_to_add.items():
+            if add_custom_expression(webmap_data, expr_name, expr_value, field_type=field_type):
+                result["expressions_added"].append(expr_name)
+        
+        # Second pass: process layers (already validated in first pass)
+        for layer, config, feature_layer, field_type in layers_to_process:
+            layer_url = layer[URL_KEY]
+            layer_title = layer.get(TITLE_KEY, UNNAMED_LAYER)
+            
+            field_name = config.get("field_name", "")
+            expression_name = config.get("expression_name", "")
+            group_name = config.get("group_name", DEFAULT_GROUP_NAME)
+            field_label = config.get("field_label")
+            editable = config.get("editable", False)
+            
+            try:
+                
                 # Update the layer's formInfo
                 if update_layer_form_info(
                     layer,
@@ -951,6 +1477,41 @@ def update_webmap_forms_by_layer_config(
                 result["errors"][layer_url] = str(e)
         
         logger.info(f"Updated {len(result['updated_layers'])} layers, skipped {len(result['skipped_layers'])}, errors: {len(result['errors'])}")
+        
+        # Validate form structure before saving
+        validation_errors = []
+        for layer, _ in process_webmap_layers(webmap_data):
+            if URL_KEY not in layer:
+                continue
+            
+            layer_url = layer[URL_KEY]
+            layer_title = layer.get(TITLE_KEY, UNNAMED_LAYER)
+            
+            # Only validate layers that were updated
+            if layer_url not in result["updated_layers"]:
+                continue
+            
+            # Try to get feature layer for full validation
+            try:
+                feature_layer = FeatureLayer(layer_url, gis=gis)
+            except Exception:
+                feature_layer = None
+            
+            # Validate form structure
+            is_valid, errors = validate_form_structure(webmap_data, layer, feature_layer, layer_title)
+            if not is_valid:
+                validation_errors.extend(errors)
+        
+        # If validation failed, add errors and abort
+        if validation_errors:
+            logger.error(f"Form validation failed with {len(validation_errors)} error(s)")
+            for error in validation_errors:
+                logger.error(f"  - {error}")
+            result["errors"]["_validation"] = "; ".join(validation_errors)
+            result["validation_errors"] = validation_errors
+            return result
+        
+        logger.info("Form structure validation passed")
         
         # Save the changes to the web map
         if debug_mode or DEBUG_MODE:
