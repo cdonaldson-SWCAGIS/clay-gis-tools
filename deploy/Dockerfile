@@ -25,6 +25,7 @@ COPY backend/ /app/backend/
 COPY frontend/ /app/frontend/
 COPY cli/ /app/cli/
 COPY static/ /app/static/
+COPY docs/ /app/docs/
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash appuser && \
