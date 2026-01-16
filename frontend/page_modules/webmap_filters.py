@@ -70,7 +70,7 @@ def show():
     
     # Show tool header
     show_tool_header(
-        "Web Map Filters",
+        "Update Layer Filters",
         "Configure definition expressions (filters) for web map layers."
     )
     
@@ -228,8 +228,12 @@ def show_per_layer_config():
     gb.configure_default_column(
         resizable=True,
         sortable=True,
-        filter=True
+        filter=True,
+        minWidth=80  # Ensure column headers are always readable
     )
+    
+    # Centered checkbox style for better UX
+    checkbox_cell_style = {"display": "flex", "justifyContent": "center", "alignItems": "center"}
     
     # Configure individual columns
     gb.configure_column(
@@ -239,7 +243,9 @@ def show_per_layer_config():
         cellRenderer="agCheckboxCellRenderer",
         cellEditor="agCheckboxCellEditor",
         width=80,
-        headerTooltip="Check to apply filter to this layer"
+        minWidth=80,
+        headerTooltip="Check to apply filter to this layer",
+        cellStyle=checkbox_cell_style
     )
     
     gb.configure_column(

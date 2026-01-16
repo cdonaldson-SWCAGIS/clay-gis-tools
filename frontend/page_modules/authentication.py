@@ -12,10 +12,21 @@ from backend.utils.logging import get_logger
 logger = get_logger("authentication")
 
 
+def _has_env_credentials() -> bool:
+    """
+    Quick check if environment credentials are configured.
+    This is a fast check that doesn't make any network calls.
+    """
+    username = os.environ.get("ARCGIS_USERNAME")
+    password = os.environ.get("ARCGIS_PASSWORD")
+    return bool(username and password)
+
+
 def _attempt_env_auth() -> bool:
     """
     Attempt authentication using environment variables.
     Returns True if successful, False otherwise.
+    Only call this if _has_env_credentials() returns True.
     """
     try:
         gis = authenticate_from_env()
@@ -72,12 +83,15 @@ def show():
         st.markdown("<br>", unsafe_allow_html=True)
         
         # Check if we should attempt env auth (first load only)
+        # Only attempt if credentials are configured (fast check, no network call)
         if not st.session_state.get("_env_auth_attempted", False):
             st.session_state._env_auth_attempted = True
             
-            with st.spinner("Connecting..."):
-                if _attempt_env_auth():
-                    st.rerun()
+            # Only show spinner and attempt auth if env vars are configured
+            if _has_env_credentials():
+                with st.spinner("Connecting..."):
+                    if _attempt_env_auth():
+                        st.rerun()
         
         # If still not authenticated, show login form
         if not st.session_state.get("authenticated", False):

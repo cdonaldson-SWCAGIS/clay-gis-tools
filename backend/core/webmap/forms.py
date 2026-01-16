@@ -10,7 +10,7 @@ from arcgis.gis import GIS
 
 from backend.utils.logging import get_logger
 from backend.core.webmap.utils import (
-    get_webmap_item, layer_contains_field, process_webmap_layers
+    get_webmap_item, layer_contains_field, process_webmap_layers, get_layer_item_form_info
 )
 from backend.utils.exceptions import (
     WebMapNotFoundError, InvalidWebMapError, LayerProcessingError, AuthenticationError
@@ -39,6 +39,72 @@ def has_expression_info(webmap_data: Dict, expression_name: str) -> bool:
     
     return any(expr.get("name") == expression_name for expr in webmap_data["expressionInfos"])
 
+
+def update_expression_value(
+    webmap_data: Dict, 
+    expression_name: str, 
+    expression_value: str,
+    field_type: Optional[str] = None
+) -> bool:
+    """
+    Update the value of an existing expression in the web map's expressionInfos.
+    
+    Args:
+        webmap_data: The web map data dictionary
+        expression_name: The name of the expression to update
+        expression_value: The new value for the expression
+        field_type: Optional Esri field type to format the value correctly
+        
+    Returns:
+        bool: True if the expression was updated, False if not found or unchanged
+    """
+    if "expressionInfos" not in webmap_data:
+        return False
+    
+    # Format the expression value based on field type
+    if field_type:
+        numeric_types = ["esriFieldTypeInteger", "esriFieldTypeSmallInteger", 
+                        "esriFieldTypeOID", "esriFieldTypeDouble", "esriFieldTypeSingle"]
+        date_types = ["esriFieldTypeDate"]
+        
+        if field_type in numeric_types:
+            try:
+                float(expression_value)
+                formatted_expression = expression_value
+            except ValueError:
+                formatted_expression = f'"{expression_value}"'
+        elif field_type in date_types:
+            if expression_value.startswith("Date(") or expression_value.isdigit():
+                formatted_expression = expression_value
+            else:
+                try:
+                    from datetime import datetime
+                    dt = datetime.strptime(expression_value, "%Y-%m-%d")
+                    timestamp = int(dt.timestamp() * 1000)
+                    formatted_expression = str(timestamp)
+                except ValueError:
+                    formatted_expression = f'"{expression_value}"'
+        else:
+            formatted_expression = f'"{expression_value}"'
+    else:
+        formatted_expression = f'"{expression_value}"'
+    
+    # Find and update the expression
+    for expr in webmap_data["expressionInfos"]:
+        if expr.get("name") == expression_name:
+            old_value = expr.get("expression")
+            if old_value != formatted_expression:
+                expr["expression"] = formatted_expression
+                logger.info(f"Updated expression '{expression_name}' value from '{old_value}' to '{formatted_expression}'")
+                return True
+            else:
+                logger.debug(f"Expression '{expression_name}' already has value '{formatted_expression}'")
+                return False
+    
+    logger.warning(f"Expression '{expression_name}' not found for update")
+    return False
+
+
 def ensure_expression_infos(webmap_data: Dict) -> None:
     """Ensure that expressionInfos exists in the web map data."""
     if "expressionInfos" not in webmap_data:
@@ -50,7 +116,8 @@ def add_custom_expression(
     expression_value: Optional[str] = None, 
     title: Optional[str] = None, 
     return_type: str = "string",
-    field_type: Optional[str] = None
+    field_type: Optional[str] = None,
+    update_if_exists: bool = False
 ) -> bool:
     """
     Add a custom expression to the web map's expressionInfos.
@@ -64,14 +131,18 @@ def add_custom_expression(
                      Will be overridden by field_type if provided.
         field_type: Optional Esri field type (e.g., "esriFieldTypeInteger").
                     If provided, overrides return_type and formats value correctly.
+        update_if_exists: If True, update the expression value if it already exists.
         
     Returns:
-        bool: True if the expression was added, False if it already existed
+        bool: True if the expression was added or updated, False if it already existed unchanged
     """
     ensure_expression_infos(webmap_data)
     
     # Check if the expression already exists
     if has_expression_info(webmap_data, expression_name):
+        if update_if_exists and expression_value is not None:
+            # Update the existing expression
+            return update_expression_value(webmap_data, expression_name, expression_value, field_type)
         logger.info(f"Expression '{expression_name}' already exists")
         return False
     
@@ -782,6 +853,122 @@ def extract_form_elements(layer: Dict) -> Dict[str, Dict]:
     logger.info(f"Extracted {len(form_elements)} form elements from layer '{layer.get('title', 'Unnamed Layer')}'")
     return form_elements
 
+
+def _extract_expression_references(form_elements: List[Dict]) -> set:
+    """
+    Extract all expression names referenced by form elements.
+    
+    Args:
+        form_elements: List of form elements to scan
+        
+    Returns:
+        Set of expression names referenced by the form elements
+    """
+    expression_names = set()
+    expression_props = ["valueExpression", "editableExpression", "visibilityExpression", "requiredExpression"]
+    
+    elements_to_process = list(form_elements)
+    while elements_to_process:
+        element = elements_to_process.pop(0)
+        
+        # Check expression properties
+        for prop in expression_props:
+            if prop in element and element[prop]:
+                expression_names.add(element[prop])
+        
+        # Process nested elements (groups)
+        if element.get("type") == "group" and "elements" in element:
+            elements_to_process.extend(element["elements"])
+    
+    return expression_names
+
+
+def copy_layer_form_to_webmap(
+    layer: Dict,
+    feature_layer: FeatureLayer,
+    gis: GIS,
+    webmap_data: Optional[Dict] = None
+) -> bool:
+    """
+    Copy formInfo from a layer item to the webmap layer configuration.
+    
+    When a layer has a form defined on the layer item but not in the webmap,
+    this function copies the layer's form to the webmap so it can be modified.
+    
+    Args:
+        layer: The layer dictionary from the webmap's operationalLayers
+        feature_layer: The FeatureLayer object
+        gis: The authenticated GIS object
+        webmap_data: Optional webmap data dict for copying expressionInfos
+        
+    Returns:
+        True if form was copied, False otherwise
+    """
+    layer_title = layer.get(TITLE_KEY, UNNAMED_LAYER)
+    
+    # Check if layer already has formInfo in webmap
+    if "formInfo" in layer and "formElements" in layer.get("formInfo", {}):
+        logger.debug(f"Layer '{layer_title}' already has formInfo in webmap, skipping copy")
+        return False
+    
+    # Get formInfo from layer item
+    layer_form_info = get_layer_item_form_info(feature_layer, gis)
+    
+    if not layer_form_info:
+        logger.debug(f"No formInfo found on layer item for '{layer_title}'")
+        return False
+    
+    if "formElements" not in layer_form_info:
+        logger.debug(f"Layer item formInfo for '{layer_title}' has no formElements")
+        return False
+    
+    # Copy the formInfo to the webmap layer
+    layer["formInfo"] = layer_form_info.copy()
+    logger.info(f"Copied formInfo from layer item to webmap for layer '{layer_title}'")
+    
+    # If webmap_data is provided, copy expressionInfos to webmap's top level
+    if webmap_data:
+        ensure_expression_infos(webmap_data)
+        
+        # Get existing expression names in webmap
+        existing_expr_names = {
+            expr.get("name") for expr in webmap_data.get("expressionInfos", [])
+        }
+        
+        # Build a map of available expressions from the layer form
+        available_expressions = {}
+        for expr_info in layer_form_info.get("expressionInfos", []):
+            expr_name = expr_info.get("name")
+            if expr_name:
+                available_expressions[expr_name] = expr_info
+        
+        # Extract all expression references from form elements
+        referenced_expressions = _extract_expression_references(layer_form_info.get("formElements", []))
+        
+        # Copy all referenced expressions that exist in layer form and not in webmap
+        copied_count = 0
+        missing_expressions = []
+        for expr_name in referenced_expressions:
+            if expr_name in existing_expr_names:
+                continue  # Already in webmap
+            
+            if expr_name in available_expressions:
+                webmap_data["expressionInfos"].append(available_expressions[expr_name].copy())
+                logger.debug(f"Copied expression '{expr_name}' from layer form to webmap")
+                copied_count += 1
+            else:
+                # Expression referenced but not found in layer form - log warning
+                missing_expressions.append(expr_name)
+        
+        if copied_count > 0:
+            logger.info(f"Copied {copied_count} expressions from layer '{layer_title}' to webmap")
+        
+        if missing_expressions:
+            logger.warning(f"Layer '{layer_title}' references expressions not found in layer item: {missing_expressions}")
+    
+    return True
+
+
 def copy_expressions_from_form_elements(webmap_data: Dict, form_elements: Dict[str, Dict]) -> None:
     """
     Copy expressions used by form elements to the web map's expressionInfos.
@@ -845,11 +1032,87 @@ def copy_expressions_from_form_elements(webmap_data: Dict, form_elements: Dict[s
                 add_custom_expression(webmap_data, expression_name)
                 logger.warning(f"Expression '{expression_name}' not found, added placeholder")
 
+def _copy_missing_expressions_from_layer_item(
+    layer: Dict,
+    feature_layer: FeatureLayer,
+    gis: GIS,
+    webmap_data: Dict
+) -> int:
+    """
+    Copy missing expressions from layer item to webmap for an existing form.
+    
+    When a webmap form references expressions that don't exist in the webmap's
+    expressionInfos, this function tries to find and copy them from the layer item.
+    
+    Args:
+        layer: The layer dictionary with formInfo
+        feature_layer: The FeatureLayer object
+        gis: The authenticated GIS object
+        webmap_data: The webmap data dict
+        
+    Returns:
+        Number of expressions copied
+    """
+    layer_title = layer.get(TITLE_KEY, UNNAMED_LAYER)
+    
+    if "formInfo" not in layer or "formElements" not in layer.get("formInfo", {}):
+        return 0
+    
+    # Get existing expressions in webmap
+    ensure_expression_infos(webmap_data)
+    existing_expr_names = {
+        expr.get("name") for expr in webmap_data.get("expressionInfos", [])
+    }
+    
+    # Extract all expression references from the form
+    referenced_expressions = _extract_expression_references(layer["formInfo"]["formElements"])
+    
+    # Find missing expressions
+    missing_expressions = referenced_expressions - existing_expr_names
+    
+    if not missing_expressions:
+        return 0
+    
+    logger.debug(f"Layer '{layer_title}' has {len(missing_expressions)} missing expressions: {missing_expressions}")
+    
+    # Try to get expressions from layer item
+    layer_form_info = get_layer_item_form_info(feature_layer, gis)
+    
+    if not layer_form_info:
+        logger.warning(f"Could not fetch layer item to find missing expressions for '{layer_title}'")
+        return 0
+    
+    # Build map of available expressions from layer item
+    available_expressions = {}
+    for expr_info in layer_form_info.get("expressionInfos", []):
+        expr_name = expr_info.get("name")
+        if expr_name:
+            available_expressions[expr_name] = expr_info
+    
+    # Copy missing expressions that exist in layer item
+    copied_count = 0
+    for expr_name in missing_expressions:
+        if expr_name in available_expressions:
+            webmap_data["expressionInfos"].append(available_expressions[expr_name].copy())
+            logger.info(f"Copied missing expression '{expr_name}' from layer item to webmap")
+            copied_count += 1
+        else:
+            logger.debug(f"Expression '{expr_name}' not found in layer item for '{layer_title}'")
+    
+    return copied_count
+
+
 def update_layer_form_info(layer: Dict, feature_layer: FeatureLayer, field_name: str, 
                            expression_name: str, group_name: str = "Metadata", 
-                           label: str = None, editable: bool = False) -> bool:
+                           label: str = None, editable: bool = False,
+                           gis: Optional[GIS] = None, webmap_data: Optional[Dict] = None) -> bool:
     """
     Update the formInfo for a layer to include the specified field.
+    
+    If the webmap doesn't have formInfo for this layer but the layer item does,
+    the form will be copied from the layer item first.
+    
+    Also checks for and copies any missing expressions from the layer item.
     
     Args:
         layer: The layer dictionary
@@ -859,16 +1122,30 @@ def update_layer_form_info(layer: Dict, feature_layer: FeatureLayer, field_name:
         group_name: The name of the group to add the element to
         label: The label for the field (defaults to formatted field name)
         editable: Whether the field should be editable
+        gis: Optional GIS object for loading layer item forms
+        webmap_data: Optional webmap data dict for copying expressionInfos
         
     Returns:
         bool: True if the layer was updated, False otherwise
     """
     layer_title = layer.get("title", "Unnamed Layer")
     
-    # Check if the layer has formInfo
+    # Check if the layer has formInfo - if not, try to load from layer item
     if "formInfo" not in layer:
-        logger.info(f"Layer '{layer_title}' does not have formInfo, skipping")
-        return False
+        if gis is not None:
+            # Try to copy form from layer item
+            copied = copy_layer_form_to_webmap(layer, feature_layer, gis, webmap_data)
+            if copied:
+                logger.info(f"Loaded form from layer item for '{layer_title}'")
+            else:
+                logger.info(f"Layer '{layer_title}' does not have formInfo in webmap or layer item, skipping")
+                return False
+        else:
+            logger.info(f"Layer '{layer_title}' does not have formInfo, skipping")
+            return False
+    elif gis is not None and webmap_data is not None:
+        # Form exists in webmap - check for missing expressions and try to copy from layer item
+        _copy_missing_expressions_from_layer_item(layer, feature_layer, gis, webmap_data)
     
     # Check if the layer has the target field
     if not layer_contains_field(feature_layer, field_name):
@@ -948,8 +1225,8 @@ def update_webmap_forms(
             logger.warning("No operational layers found in the webmap data")
             return []
         
-        # Add the custom expression to the web map
-        add_custom_expression(webmap_data, expression_name, expression_value)
+        # Add or update the custom expression in the web map
+        add_custom_expression(webmap_data, expression_name, expression_value, update_if_exists=True)
         
         # Process all layers including nested ones
         updated_layers = []
@@ -977,7 +1254,9 @@ def update_webmap_forms(
                         expression_name, 
                         group_name, 
                         field_label, 
-                        editable
+                        editable,
+                        gis=gis,
+                        webmap_data=webmap_data
                     ):
                         updated_layers.append(layer_url)
                 except Exception as e:
@@ -1439,9 +1718,9 @@ def update_webmap_forms_by_layer_config(
                 if expr_name not in expressions_to_add:
                     expressions_to_add[expr_name] = (expr_value, field_type)
         
-        # Add all required expressions to the web map with correct field types
+        # Add or update all required expressions in the web map with correct field types
         for expr_name, (expr_value, field_type) in expressions_to_add.items():
-            if add_custom_expression(webmap_data, expr_name, expr_value, field_type=field_type):
+            if add_custom_expression(webmap_data, expr_name, expr_value, field_type=field_type, update_if_exists=True):
                 result["expressions_added"].append(expr_name)
         
         # Second pass: process layers (already validated in first pass)
@@ -1456,7 +1735,6 @@ def update_webmap_forms_by_layer_config(
             editable = config.get("editable", False)
             
             try:
-                
                 # Update the layer's formInfo
                 if update_layer_form_info(
                     layer,
@@ -1465,7 +1743,9 @@ def update_webmap_forms_by_layer_config(
                     expression_name,
                     group_name,
                     field_label,
-                    editable
+                    editable,
+                    gis=gis,
+                    webmap_data=webmap_data
                 ):
                     logger.info(f"Updated form for layer '{layer_title}' on field '{field_name}'")
                     result["updated_layers"].append(layer_url)

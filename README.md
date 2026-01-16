@@ -29,8 +29,8 @@ A Python-based web application and utility suite for automating GIS workflows in
 ### Web Application Pages
 
 - **Authentication**: Connect to ArcGIS Online/Portal
-- **Web Map Filters**: Update definition expressions in web maps
-- **Web Map Forms**: Configure form elements in web maps and save web maps as new
+- **Update Layer Filters**: Update definition expressions in web maps
+- **Update Layer Form Default Values**: Configure form default values and save web maps as new
 - **Settings**: Configure application settings, debug mode, and map suffix
 
 ## Installation

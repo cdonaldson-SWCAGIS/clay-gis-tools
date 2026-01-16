@@ -113,10 +113,13 @@ def process_webmap_layers(
         path_prefix = layer.get("_path_prefix", []) if include_path else []
         
         # Add nested layers to processing queue
+        # Esri returns nested layers in reverse order, so reverse them to match webmap display order
         if LAYERS_KEY in layer and isinstance(layer[LAYERS_KEY], list):
             new_prefix = path_prefix + [layer.get(TITLE_KEY, UNNAMED_LAYER)] if include_path else []
             
-            for child_layer in layer[LAYERS_KEY]:
+            # Reverse nested layers to match webmap display order
+            nested_layers = list(reversed(layer[LAYERS_KEY]))
+            for child_layer in nested_layers:
                 child_layer_copy = child_layer.copy()
                 if include_path:
                     child_layer_copy["_path_prefix"] = new_prefix
@@ -198,6 +201,13 @@ def get_webmap_layer_details(webmap_item: Item, gis: GIS) -> List[Dict[str, Any]
     Iterates through operational layers (including nested group layers) and returns
     a list of layer details including URL, name, path, and available fields.
     
+    Forms can exist in two places:
+    1. In the webmap's layer configuration (webmap form)
+    2. On the layer item itself (layer form)
+    
+    The webmap form takes precedence when both exist. A layer is considered to
+    have a form if EITHER source has one.
+    
     Args:
         webmap_item: The web map Item object
         gis: The authenticated GIS object
@@ -209,7 +219,11 @@ def get_webmap_layer_details(webmap_item: Item, gis: GIS) -> List[Dict[str, Any]
         - name: The layer title/name
         - path: Full path including parent groups (e.g., "GroupName/LayerName")
         - fields: List of field names available in the layer
-        - has_form_info: Whether the layer has form configuration
+        - fields_with_types: List of field dicts with name and type
+        - has_form_info: Whether the layer has form configuration (from either source)
+        - has_webmap_form: Whether the webmap has form config for this layer
+        - has_layer_form: Whether the layer item has form config
+        - form_source: "webmap", "layer", or "none"
     """
     layer_details = []
     
@@ -223,8 +237,13 @@ def get_webmap_layer_details(webmap_item: Item, gis: GIS) -> List[Dict[str, Any]
         logger.warning("No operational layers found in the web map")
         return layer_details
     
+    # Esri returns operational layers in reverse order, so reverse them to match webmap display order
+    webmap_data_copy = webmap_data.copy()
+    if OPERATIONAL_LAYERS_KEY in webmap_data_copy:
+        webmap_data_copy[OPERATIONAL_LAYERS_KEY] = list(reversed(webmap_data_copy[OPERATIONAL_LAYERS_KEY]))
+    
     # Process all layers including nested ones
-    for layer, path_prefix in process_webmap_layers(webmap_data, include_path=True):
+    for layer, path_prefix in process_webmap_layers(webmap_data_copy, include_path=True):
         # Only process layers with URLs (feature layers, not group layers)
         if URL_KEY not in layer:
             continue
@@ -238,8 +257,28 @@ def get_webmap_layer_details(webmap_item: Item, gis: GIS) -> List[Dict[str, Any]
         # Also keep field names for backward compatibility
         field_names = [f["name"] for f in fields_with_types]
         
-        # Check if layer has form info
-        has_form_info = "formInfo" in layer and "formElements" in layer.get("formInfo", {})
+        # Check if webmap has form info for this layer
+        has_webmap_form = "formInfo" in layer and "formElements" in layer.get("formInfo", {})
+        
+        # Check if layer item has form info
+        has_layer_form = False
+        try:
+            feature_layer = FeatureLayer(layer_url, gis=gis)
+            layer_form_info = get_layer_item_form_info(feature_layer, gis)
+            has_layer_form = layer_form_info is not None and "formElements" in layer_form_info
+        except Exception as e:
+            logger.debug(f"Could not check layer item form for '{layer_title}': {e}")
+        
+        # Determine form source (webmap takes precedence)
+        if has_webmap_form:
+            form_source = "webmap"
+        elif has_layer_form:
+            form_source = "layer"
+        else:
+            form_source = "none"
+        
+        # has_form_info is True if EITHER source has a form
+        has_form_info = has_webmap_form or has_layer_form
         
         layer_details.append({
             "url": layer_url,
@@ -248,13 +287,141 @@ def get_webmap_layer_details(webmap_item: Item, gis: GIS) -> List[Dict[str, Any]
             "path": layer_path,
             "fields": field_names,  # Keep for backward compatibility
             "fields_with_types": fields_with_types,  # New: fields with type info
-            "has_form_info": has_form_info
+            "has_form_info": has_form_info,
+            "has_webmap_form": has_webmap_form,
+            "has_layer_form": has_layer_form,
+            "form_source": form_source
         })
         
-        logger.debug(f"Processed layer: {layer_path} with {len(field_names)} fields")
+        logger.debug(f"Processed layer: {layer_path} with {len(field_names)} fields, form_source={form_source}")
     
     logger.info(f"Found {len(layer_details)} feature layers in web map")
     return layer_details
+
+
+def get_layer_item_form_info(
+    feature_layer: FeatureLayer,
+    gis: GIS,
+    layer_index: Optional[int] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Get formInfo from a layer's source item (Feature Layer item).
+    
+    Forms can be saved either to the web map (layer config) or to the layer item itself.
+    This function retrieves the form from the layer item if it exists.
+    
+    Args:
+        feature_layer: The FeatureLayer object
+        gis: The authenticated GIS object
+        layer_index: Optional layer index within the service (extracted from URL if not provided)
+        
+    Returns:
+        formInfo dictionary if found, None otherwise
+    """
+    if not feature_layer:
+        return None
+    
+    try:
+        # Get the service item ID from the feature layer properties
+        service_item_id = feature_layer.properties.get("serviceItemId")
+        
+        if not service_item_id:
+            logger.debug("No serviceItemId found on feature layer")
+            return None
+        
+        # Fetch the layer item
+        layer_item = gis.content.get(service_item_id)
+        if not layer_item:
+            logger.debug(f"Could not fetch layer item with ID: {service_item_id}")
+            return None
+        
+        # Get the item's data
+        item_data = layer_item.get_data()
+        if not item_data:
+            logger.debug(f"No data found for layer item: {service_item_id}")
+            return None
+        
+        # Determine layer index from URL if not provided
+        if layer_index is None:
+            try:
+                # Extract layer index from URL (e.g., .../FeatureServer/0)
+                url = feature_layer.url
+                if url and "/FeatureServer/" in url:
+                    layer_index = int(url.split("/FeatureServer/")[-1].split("/")[0])
+                elif url and "/MapServer/" in url:
+                    layer_index = int(url.split("/MapServer/")[-1].split("/")[0])
+            except (ValueError, IndexError):
+                layer_index = 0
+        
+        def _merge_expressions(form_info: Dict, parent_expressions: List) -> None:
+            """Merge parent-level expressions into formInfo, avoiding duplicates."""
+            if not parent_expressions:
+                return
+            
+            if "expressionInfos" not in form_info:
+                form_info["expressionInfos"] = []
+            
+            # Get existing expression names
+            existing_names = {e.get("name") for e in form_info["expressionInfos"]}
+            
+            # Add parent expressions that don't already exist
+            for expr in parent_expressions:
+                if expr.get("name") and expr.get("name") not in existing_names:
+                    form_info["expressionInfos"].append(expr)
+        
+        # Check for formInfo in the item data
+        # It can be at the top level or within a layers array
+        # Also capture expressionInfos which may be at the layer level (not inside formInfo)
+        
+        if "formInfo" in item_data:
+            logger.debug(f"Found formInfo at top level of layer item: {service_item_id}")
+            form_info = item_data["formInfo"].copy()
+            # Deep copy expressionInfos if present
+            if "expressionInfos" in form_info:
+                form_info["expressionInfos"] = [e.copy() for e in form_info["expressionInfos"]]
+            # Also merge expressionInfos from top level
+            _merge_expressions(form_info, item_data.get("expressionInfos", []))
+            return form_info
+        
+        # Check in layers array (for Feature Layer Collection items)
+        if "layers" in item_data and isinstance(item_data["layers"], list):
+            for layer_data in item_data["layers"]:
+                # Match by layer index/id
+                layer_id = layer_data.get("id")
+                if layer_id == layer_index or layer_id == str(layer_index):
+                    if "formInfo" in layer_data:
+                        logger.debug(f"Found formInfo in layer {layer_index} of item: {service_item_id}")
+                        form_info = layer_data["formInfo"].copy()
+                        # Deep copy expressionInfos if present
+                        if "expressionInfos" in form_info:
+                            form_info["expressionInfos"] = [e.copy() for e in form_info["expressionInfos"]]
+                        # Also merge expressionInfos from layer level and top level
+                        _merge_expressions(form_info, layer_data.get("expressionInfos", []))
+                        _merge_expressions(form_info, item_data.get("expressionInfos", []))
+                        return form_info
+        
+        # Check in tables array as well
+        if "tables" in item_data and isinstance(item_data["tables"], list):
+            for table_data in item_data["tables"]:
+                table_id = table_data.get("id")
+                if table_id == layer_index or table_id == str(layer_index):
+                    if "formInfo" in table_data:
+                        logger.debug(f"Found formInfo in table {layer_index} of item: {service_item_id}")
+                        form_info = table_data["formInfo"].copy()
+                        # Deep copy expressionInfos if present
+                        if "expressionInfos" in form_info:
+                            form_info["expressionInfos"] = [e.copy() for e in form_info["expressionInfos"]]
+                        # Also merge expressionInfos from table level and top level
+                        _merge_expressions(form_info, table_data.get("expressionInfos", []))
+                        _merge_expressions(form_info, item_data.get("expressionInfos", []))
+                        return form_info
+        
+        logger.debug(f"No formInfo found in layer item: {service_item_id}")
+        return None
+        
+    except Exception as e:
+        logger.warning(f"Error fetching layer item formInfo: {e}")
+        return None
 
 
 def get_all_unique_fields(layer_details: List[Dict[str, Any]]) -> List[str]:

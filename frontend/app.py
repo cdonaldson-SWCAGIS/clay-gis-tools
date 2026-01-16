@@ -31,8 +31,9 @@ css_path = os.path.join(project_root, ".streamlit", "style.css")
 if os.path.exists(css_path):
     load_css(css_path)
 
-# Import pages
-from frontend.page_modules import authentication, webmap_filters, webmap_forms, settings
+# Import authentication module (lightweight, needed for splash screen)
+# Other page modules are lazy-loaded when needed to reduce startup time
+from frontend.page_modules import authentication
 from backend.utils.logging import configure_logging
 
 # Configure logging once at startup
@@ -55,22 +56,27 @@ else:
     st.sidebar.title("Clay AGOL Tools")
     
     # Navigation
+    st.sidebar.subheader("Webmap Tools")
     page = st.sidebar.radio(
-        "Navigation",
-        ["Web Map Filters", "Web Map Forms", "Settings"],
-        key="navigation"
+        "Webmap Tools",
+        ["Update Layer Filters", "Update Layer Form Default Values", "Settings"],
+        key="navigation",
+        label_visibility="collapsed"
     )
     
     # Debug mode indicator
     if st.session_state.get("debug_mode", True):
         st.sidebar.warning("Debug mode ON - changes simulated")
     
-    # Page routing
-    if page == "Web Map Filters":
+    # Page routing with lazy imports to reduce initial load time
+    if page == "Update Layer Filters":
+        from frontend.page_modules import webmap_filters
         webmap_filters.show()
-    elif page == "Web Map Forms":
+    elif page == "Update Layer Form Default Values":
+        from frontend.page_modules import webmap_forms
         webmap_forms.show()
     elif page == "Settings":
+        from frontend.page_modules import settings
         settings.show()
     
     # Footer

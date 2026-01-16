@@ -72,7 +72,7 @@ def show():
     
     # Show tool header
     show_tool_header(
-        "Web Map Forms",
+        "Update Layer Form Default Values",
         "Set default form field values for layers."
     )
     
@@ -162,14 +162,22 @@ def show_per_layer_config():
         # Convert fields list to JSON string to ensure proper serialization
         fields_json = json.dumps(fields_with_types) if fields_with_types else "[]"
         
+        # Determine form source display value
+        # "webmap" = form in webmap, "layer" = form on layer item, "none" = no form
+        form_source = layer.get("form_source", "none")
+        # Fallback for backward compatibility
+        if form_source == "none" and layer.get("has_form_info", False):
+            form_source = "webmap"
+        
         df_data.append({
             "Apply": False,
             "Layer Name": layer["name"],
-            "Has Form": layer.get("has_form_info", False),
+            "Form Source": form_source.capitalize() if form_source != "none" else "None",
             "Field": "",
             "Default Value": "",
             "_url": layer["url"],
-            "_fields": fields_json  # Store as JSON string with type info for validation
+            "_fields": fields_json,  # Store as JSON string with type info for validation
+            "_form_source": form_source  # Keep raw value for validation
         })
     
     df = pd.DataFrame(df_data)
@@ -184,8 +192,12 @@ def show_per_layer_config():
     gb.configure_default_column(
         resizable=True,
         sortable=True,
-        filter=True
+        filter=True,
+        minWidth=80  # Ensure column headers are always readable
     )
+    
+    # Centered checkbox style for better UX
+    checkbox_cell_style = {"display": "flex", "justifyContent": "center", "alignItems": "center"}
     
     # Configure individual columns
     gb.configure_column(
@@ -194,8 +206,10 @@ def show_per_layer_config():
         editable=True,
         cellRenderer="agCheckboxCellRenderer",
         cellEditor="agCheckboxCellEditor",
-        width=70,
-        headerTooltip="Check to apply form configuration to this layer"
+        width=80,
+        minWidth=80,
+        headerTooltip="Check to apply form configuration to this layer",
+        cellStyle=checkbox_cell_style
     )
     
     gb.configure_column(
@@ -207,12 +221,12 @@ def show_per_layer_config():
     )
     
     gb.configure_column(
-        "Has Form",
-        headerName="Has Form",
+        "Form Source",
+        headerName="Form",
         editable=False,
-        cellRenderer="agCheckboxCellRenderer",
         width=90,
-        headerTooltip="Whether the layer has existing form configuration"
+        minWidth=90,
+        headerTooltip="Form source: Webmap (saved in map), Layer (on layer item), or None"
     )
     
     # Load the custom cell editor JavaScript from external file
@@ -250,6 +264,15 @@ def show_per_layer_config():
     )
     gb.configure_column(
         "_fields",
+        hide=True,
+        valueFormatter=empty_formatter,
+        editable=False,
+        sortable=False,
+        filter=False,
+        cellDataType=False
+    )
+    gb.configure_column(
+        "_form_source",
         hide=True,
         valueFormatter=empty_formatter,
         editable=False,
@@ -355,7 +378,7 @@ def show_per_layer_config():
                 field_name = row["Field"]
                 default_value = str(row["Default Value"]).strip() if pd.notna(row["Default Value"]) else ""
                 layer_name = row["Layer Name"]
-                has_form = row["Has Form"]
+                form_source = row["_form_source"]
                 
                 # Validate
                 if not field_name:
@@ -364,7 +387,8 @@ def show_per_layer_config():
                 if not default_value:
                     validation_errors.append(f"'{layer_name}': Default value is required")
                     continue
-                if not has_form:
+                # Check if layer has form from either source (webmap or layer item)
+                if form_source == "none":
                     validation_errors.append(f"'{layer_name}': Layer does not have form configuration")
                     continue
                 
