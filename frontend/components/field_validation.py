@@ -239,12 +239,52 @@ def show_validation_ui(
             operator = row.get(operator_column, "=") if operator_column else "="
             has_form = row.get("Has Form", True) if is_form_mode else True
             
+            # Check if field name is provided
+            if not field_name:
+                field_label = "Field" if is_form_mode else "Target Field"
+                error_msg = f"{field_label} is required"
+                results.append({
+                    "layer": layer_name,
+                    "field": "",
+                    "valid": False,
+                    "error": error_msg,
+                    "type": "esriFieldTypeString",
+                    "type_display": "Unknown",
+                    "warnings": [],
+                    "value": value,
+                    "operator": operator,
+                    "preview": ""
+                })
+                all_valid = False
+                continue
+            
             # Parse fields_with_types from JSON
             fields_json = row.get("_fields", "[]")
             try:
                 fields = json.loads(fields_json) if isinstance(fields_json, str) else fields_json
             except (json.JSONDecodeError, TypeError):
                 fields = []
+            
+            # Extract field names from objects (handles both old string format and new object format)
+            field_names = [f["name"] if isinstance(f, dict) else f for f in fields]
+            
+            # Check if field exists in this layer's fields (important for dragged cell values)
+            if field_name not in field_names:
+                error_msg = f"Field '{field_name}' not available in layer '{layer_name}'"
+                results.append({
+                    "layer": layer_name,
+                    "field": field_name,
+                    "valid": False,
+                    "error": error_msg,
+                    "type": "esriFieldTypeString",
+                    "type_display": "Unknown",
+                    "warnings": [],
+                    "value": value,
+                    "operator": operator,
+                    "preview": f"{field_name} = {value}" if value else f"{field_name}"
+                })
+                all_valid = False
+                continue
             
             # Get field type
             field_type = get_field_type_from_fields(field_name, fields)

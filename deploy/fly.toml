@@ -7,7 +7,8 @@ app = 'clay-gis-tools'
 primary_region = 'lax'
 
 [build]
-  dockerfile = "Dockerfile"
+  # Note: dockerfile path should be specified via command line when deploying
+  # Deploy from project root: fly deploy . --config deploy/fly.toml --dockerfile deploy/Dockerfile
 
 [env]
   PYTHONUNBUFFERED = "1"

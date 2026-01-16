@@ -51,8 +51,7 @@ htmlcov/
 *.sqlite3
 *.db
 
-# Documentation (if not needed in image)
-docs/
+# Documentation (docs/ is needed for help functionality)
 *.md
 !README.md
 
